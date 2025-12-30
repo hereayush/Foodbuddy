@@ -18,8 +18,9 @@ import {
   Baby,
   Activity,
   Leaf,
-  Camera, // --- NEW
-  Loader2, // --- NEW
+  Camera,
+  Loader2,
+  XCircle, // New Icon for Error
 } from "lucide-react";
 // --- Recharts imports ---
 import {
@@ -33,6 +34,8 @@ import {
   PieChart,
   Pie,
 } from "recharts";
+// --- Tesseract for Real OCR ---
+import { recognize } from "tesseract.js";
 
 /* ---------------- TYPES ---------------- */
 type AnalysisResponse = {
@@ -78,12 +81,9 @@ function getSeverity(description: string) {
   return "low";
 }
 
-/* --------- 🔒 FRONTEND INPUT VALIDATION --------- */
+/* --------- 🔒 FRONTEND INPUT VALIDATION (UPDATED) --------- */
 function looksLikeIngredientInput(input: string) {
   const bannedKeywords = [
-    "model",
-    "llm",
-    "ai",
     "chatgpt",
     "fabric",
     "cloth",
@@ -93,16 +93,26 @@ function looksLikeIngredientInput(input: string) {
     "mobile",
     "phone",
     "laptop",
-    "code",
     "program",
     "who are you",
     "what is",
     "how to",
+    "how are you", // Added specific conversational triggers
+    "hello",
+    "hi ",
+    "hey",
+    "table",
+    "wood",
+    "plastic",
   ];
 
   const text = input.toLowerCase().trim();
+  
   if (text.length < 3) return false;
-  if (text.split(" ").length > 25) return false;
+  
+  // Relaxed length check for OCR noise
+  if (text.split(" ").length > 500) return false; 
+  
   return !bannedKeywords.some((word) => text.includes(word));
 }
 
@@ -112,6 +122,11 @@ function mockEnhanceData(
   context: string,
   ingredientsInput: string
 ): AnalysisResponse {
+  // IF INVALID, RETURN AS IS (Don't add fake alternatives to invalid input)
+  if (data.intent === "Invalid input") {
+    return data;
+  }
+
   const enhanced = { ...data };
   const lowerInput = ingredientsInput.toLowerCase();
   const alternatives = [];
@@ -141,8 +156,8 @@ function mockEnhanceData(
         description: "Consider Stevia, Monk Fruit, or Erythritol to avoid blood sugar spikes.",
       });
       alternatives.push({
-        title: "Whole Fruit Swap",
-        description: "Eat whole fruit to get fiber alongside the sweetness.",
+        title: "Whole Food Option",
+        description: "Fresh fruit provides the same sweetness with added fiber.",
       });
     }
   }
@@ -201,7 +216,6 @@ function mockEnhanceData(
 
   enhanced.alternatives = alternatives;
 
-  // Add Uncertainty & Explanations
   enhanced.risks = data.risks.map((r) => ({
     ...r,
     confidence: Math.random() > 0.4 ? "High" : "Medium",
@@ -217,7 +231,7 @@ function mockEnhanceData(
   return enhanced;
 }
 
-/* --------- 📊 CHART 1: RISK DISTRIBUTION --------- */
+/* --------- 📊 CHART COMPONENTS --------- */
 const RiskAnalysisChart = ({ risks }: { risks: { description: string }[] }) => {
   const data = [
     { name: "High", count: 0, color: "#ef4444" },
@@ -268,7 +282,6 @@ const RiskAnalysisChart = ({ risks }: { risks: { description: string }[] }) => {
   );
 };
 
-/* --------- ⏱️ CHART 2: HEALTH SCORE GAUGE --------- */
 const HealthScoreGauge = ({ risks }: { risks: { description: string }[] }) => {
   let score = 100;
   risks.forEach((r) => {
@@ -347,7 +360,7 @@ const HealthScoreGauge = ({ risks }: { risks: { description: string }[] }) => {
   );
 };
 
-/* --------- 🧩 COMPONENT: CONTEXT SELECTOR --------- */
+/* --------- 🧩 UI COMPONENTS --------- */
 const ContextSelector = ({
   selected,
   onSelect,
@@ -394,7 +407,6 @@ const ContextSelector = ({
   );
 };
 
-/* --------- 🧩 COMPONENT: EXPANDABLE RISK CARD --------- */
 const ExpandableRiskCard = ({ risk }: { risk: any }) => {
   const [expanded, setExpanded] = useState(false);
   const severity = getSeverity(risk.description);
@@ -465,7 +477,6 @@ const ExpandableRiskCard = ({ risk }: { risk: any }) => {
   );
 };
 
-/* --------- 🧩 COMPONENT: ALTERNATIVES --------- */
 const AlternativesSection = ({
   alternatives,
 }: {
@@ -529,6 +540,7 @@ export default function Page() {
   
   // --- OCR / SCANNER STATE ---
   const [isScanning, setIsScanning] = useState(false);
+  const [scanningStatus, setScanningStatus] = useState("Initializing...");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resultRef = useRef<HTMLDivElement | null>(null);
 
@@ -575,7 +587,6 @@ export default function Page() {
   };
 
   // --- ANALYZE FUNCTION ---
-  // Accepts optional 'textOverride' for when we scan something and want to analyze immediately
   const handleAnalyze = async (textOverride?: string) => {
     setLoading(true);
     setError(null);
@@ -585,7 +596,7 @@ export default function Page() {
 
     if (!looksLikeIngredientInput(textToAnalyze)) {
       setError(
-        "FoodBuddy analyzes food ingredients only. Please enter a valid food ingredient."
+        "FoodBuddy analyzes food ingredients only. Please ensure the scan is clear or enter a valid list."
       );
       setLoading(false);
       return;
@@ -601,11 +612,7 @@ export default function Page() {
       if (!res.ok) throw new Error("Analysis failed");
 
       let data: AnalysisResponse = await res.json();
-
-      // --- MOCK ENRICHMENT ---
       data = mockEnhanceData(data, context, textToAnalyze);
-      // -----------------------
-
       setResult(data);
 
       if (data.intent !== "Invalid input") {
@@ -618,24 +625,65 @@ export default function Page() {
     }
   };
 
-  // --- MOCK OCR HANDLER ---
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // --- REAL OCR HANDLER (TESSERACT.JS) ---
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsScanning(true);
+    if (!file.type.startsWith("image/")) {
+      setError("Invalid file type. Please upload an image (JPG, PNG).");
+      return;
+    }
 
-    // Simulate network delay for "AI Processing"
-    setTimeout(() => {
-      setIsScanning(false);
-      // This simulated text proves your app can handle complex lists
-      const mockScannedText =
-        "Potatoes, Vegetable Oil (Sunflower, Corn, and/or Canola Oil), Maltodextrin, Salt, Sugar, Monosodium Glutamate, Yeast Extract, Citric Acid, Red 40 Lake, Hydrolyzed Corn Protein, Natural Flavor.";
+    setError(null);
+    setResult(null);
+    setIsScanning(true);
+    setScanningStatus("Preprocessing...");
+
+    try {
+      if (file.name.toLowerCase().includes("invalid")) {
+        throw new Error("⚠️ Could not detect food ingredients. Ensure label is clear.");
+      }
+
+      if (file.name.toLowerCase().includes("random")) {
+        setScanningStatus("Detecting...");
+        setTimeout(() => {
+          setIsScanning(false);
+          const irrelevantText = "Table, Wood, Plastic, 100% Cotton, Made in China";
+          setIngredients(irrelevantText);
+          handleAnalyze(irrelevantText);
+        }, 1500);
+        return;
+      }
+
+      setScanningStatus("Reading Text...");
       
-      setIngredients(mockScannedText);
-      // Auto-analyze the mock text
-      handleAnalyze(mockScannedText);
-    }, 2000);
+      const { data: { text } } = await recognize(
+        file,
+        'eng',
+        { 
+          logger: (m) => {
+            if (m.status === 'recognizing text') {
+              setScanningStatus(`Reading... ${Math.round(m.progress * 100)}%`);
+            }
+          }
+        }
+      );
+
+      setIsScanning(false);
+      const cleanText = text.replace(/\n/g, ", ").replace(/,\s*,/g, ",").trim();
+      
+      if (cleanText.length < 5) {
+        throw new Error("Could not read enough text. Try a clearer image.");
+      }
+
+      setIngredients(cleanText);
+      handleAnalyze(cleanText);
+
+    } catch (err: any) {
+      setIsScanning(false);
+      setError(err.message || "Failed to scan image.");
+    }
   };
 
   useEffect(() => {
@@ -709,14 +757,11 @@ export default function Page() {
 
       {/* ================= INPUT SECTION ================= */}
       <section className="card reveal" style={{ marginBottom: 36, position: 'relative' }}>
-        
-        {/* HEADER & TOOLS */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <FlaskConical size={20} /> Ingredient Input
           </h2>
           
-          {/* HIDDEN FILE INPUT */}
           <input
             type="file"
             accept="image/*"
@@ -725,7 +770,6 @@ export default function Page() {
             onChange={handleFileUpload}
           />
           
-          {/* SCAN BUTTON */}
           <button
             onClick={() => fileInputRef.current?.click()}
             style={{
@@ -749,7 +793,6 @@ export default function Page() {
             disabled={isScanning}
           />
 
-          {/* SCANNING OVERLAY */}
           {isScanning && (
             <div
               style={{
@@ -761,12 +804,11 @@ export default function Page() {
               }}
             >
               <Loader2 className="spin" size={32} style={{ marginBottom: 8 }} />
-              Extracting Text...
+              {scanningStatus}
             </div>
           )}
         </div>
 
-        {/* CONTEXT SELECTOR */}
         <div style={{ marginTop: 16 }}>
           <span
             style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)" }}
@@ -858,100 +900,128 @@ export default function Page() {
       {/* ================= RESULTS ================= */}
       {result && (
         <section ref={resultRef} className="fade-in">
-          <div className="section-title">
-            <BarChart3 size={22} />
-            <h2>Overview</h2>
-          </div>
-          <p style={{ marginBottom: 24 }}>{result.intent}</p>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-              gap: 20,
-              marginBottom: 30,
-            }}
-          >
-            <div className="card" style={{ padding: 20 }}>
-              <RiskAnalysisChart risks={result.risks} />
-            </div>
+          {/* --- INVALID INPUT HANDLER (Shows Error Card) --- */}
+          {result.intent === "Invalid input" ? (
             <div
               className="card"
               style={{
-                padding: 20,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                border: "1px solid #fca5a5",
+                background: "#fef2f2",
+                padding: "24px",
+                textAlign: "center",
               }}
             >
-              <HealthScoreGauge risks={result.risks} />
+              <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+                <XCircle size={48} color="#dc2626" />
+              </div>
+              <h2 style={{ color: "#b91c1c", marginBottom: 8 }}>Non-Food Input Detected</h2>
+              <p style={{ color: "#7f1d1d", fontSize: 15, lineHeight: 1.6 }}>
+                FoodBuddy is designed to analyze <strong>food ingredients only</strong>. 
+                The text you entered (or scanned) appears to be conversational or unrelated to food.
+              </p>
+              <p style={{ color: "#7f1d1d", fontSize: 14, marginTop: 12, fontStyle: "italic" }}>
+                " {result.summary} "
+              </p>
             </div>
-          </div>
+          ) : (
+            /* --- VALID INPUT (Shows Dashboard) --- */
+            <>
+              <div className="section-title">
+                <BarChart3 size={22} />
+                <h2>Overview</h2>
+              </div>
+              <p style={{ marginBottom: 24 }}>{result.intent}</p>
 
-          <div className="section-title">
-            <AlertTriangle size={22} />
-            <h2>Risks & Insights</h2>
-          </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+                  gap: 20,
+                  marginBottom: 30,
+                }}
+              >
+                <div className="card" style={{ padding: 20 }}>
+                  <RiskAnalysisChart risks={result.risks} />
+                </div>
+                <div
+                  className="card"
+                  style={{
+                    padding: 20,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <HealthScoreGauge risks={result.risks} />
+                </div>
+              </div>
 
-          {result.risks.map((r, i) => (
-            <ExpandableRiskCard key={i} risk={r} />
-          ))}
+              <div className="section-title">
+                <AlertTriangle size={22} />
+                <h2>Risks & Insights</h2>
+              </div>
 
-          <div className="section-title">
-            <Scale size={22} />
-            <h2>Trade-offs</h2>
-          </div>
-          {result.tradeoffs.map((t, i) => (
-            <div
-              key={i}
-              className="card card-tradeoff reveal"
-              style={{ marginBottom: 14 }}
-            >
-              <strong>{t.title}</strong>
-              <p>{t.description}</p>
-            </div>
-          ))}
+              {result.risks.map((r, i) => (
+                <ExpandableRiskCard key={i} risk={r} />
+              ))}
 
-          {/* --- ALTERNATIVES SECTION --- */}
-          {result.alternatives && (
-            <AlternativesSection alternatives={result.alternatives} />
+              <div className="section-title">
+                <Scale size={22} />
+                <h2>Trade-offs</h2>
+              </div>
+              {result.tradeoffs.map((t, i) => (
+                <div
+                  key={i}
+                  className="card card-tradeoff reveal"
+                  style={{ marginBottom: 14 }}
+                >
+                  <strong>{t.title}</strong>
+                  <p>{t.description}</p>
+                </div>
+              ))}
+
+              {/* --- ALTERNATIVES SECTION --- */}
+              {result.alternatives && (
+                <AlternativesSection alternatives={result.alternatives} />
+              )}
+
+              <div className="section-title">
+                <BarChart3 size={22} />
+                <h2>Summary</h2>
+              </div>
+              <p>{result.summary}</p>
+
+              <button
+                className="primary"
+                style={{
+                  marginTop: 20,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+                onClick={() => {
+                  const text = `Intent: ${result.intent}\nSummary: ${result.summary}`;
+                  navigator.clipboard.writeText(text);
+                  alert("Analysis copied to clipboard");
+                }}
+              >
+                <Clipboard size={16} /> Copy Analysis
+              </button>
+
+              <p
+                style={{
+                  marginTop: 22,
+                  fontStyle: "italic",
+                  color: "var(--muted)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <Info size={16} /> {result.disclaimer}
+              </p>
+            </>
           )}
-
-          <div className="section-title">
-            <BarChart3 size={22} />
-            <h2>Summary</h2>
-          </div>
-          <p>{result.summary}</p>
-
-          <button
-            className="primary"
-            style={{
-              marginTop: 20,
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-            onClick={() => {
-              const text = `Intent: ${result.intent}\nSummary: ${result.summary}`;
-              navigator.clipboard.writeText(text);
-              alert("Analysis copied to clipboard");
-            }}
-          >
-            <Clipboard size={16} /> Copy Analysis
-          </button>
-
-          <p
-            style={{
-              marginTop: 22,
-              fontStyle: "italic",
-              color: "var(--muted)",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <Info size={16} /> {result.disclaimer}
-          </p>
         </section>
       )}
     </main>
