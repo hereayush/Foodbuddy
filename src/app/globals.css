@@ -172,12 +172,12 @@ header.reveal {
 
 .card-risk {
   background: var(--risk-bg);
-  border-color: rgba(239, 68, 68, 0.35);
+  border-color: rgba(239, 68, 68, 0.25);
 }
 
 .card-tradeoff {
   background: var(--trade-bg);
-  border-color: rgba(6, 182, 212, 0.35);
+  border-color: rgba(6, 182, 212, 0.25);
 }
 
 /* ================= TEXTAREA ================= */
@@ -247,29 +247,40 @@ button.primary:disabled {
   box-shadow: none;
 }
 
-/* ================= SEVERITY ================= */
+/* ================= SEVERITY (SOFTENED COLORS) ================= */
 
 .severity {
   margin-left: 8px;
   padding: 4px 12px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: 0.35px;
+  text-transform: uppercase;
 }
 
+/* HIGH – soft muted red */
 .severity-high {
-  background: rgba(239, 68, 68, 0.25);
-  color: #fecaca;
+  background: rgba(239, 68, 68, 0.75);
+  color: #ffffff;
+  box-shadow:
+    0 4px 10px rgba(239, 68, 68, 0.25);
 }
 
+/* MEDIUM – soft muted amber */
 .severity-medium {
-  background: rgba(245, 158, 11, 0.25);
-  color: #fde68a;
+  background: rgba(245, 158, 11, 0.75);
+  color: #ffffff;
+  box-shadow:
+    0 4px 10px rgba(245, 158, 11, 0.25);
 }
 
+/* LOW – soft muted cyan */
 .severity-low {
-  background: rgba(6, 182, 212, 0.25);
-  color: #67e8f9;
+  background: rgba(6, 182, 212, 0.75);
+  color: #ffffff;
+  box-shadow:
+    0 4px 10px rgba(6, 182, 212, 0.25);
 }
 
 /* ================= ANIMATIONS ================= */
