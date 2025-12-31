@@ -21,6 +21,7 @@ import {
   Camera,
   Loader2,
   XCircle,
+  Upload, // --- NEW: Import Upload Icon
 } from "lucide-react";
 // --- Recharts imports ---
 import {
@@ -109,7 +110,6 @@ function looksLikeIngredientInput(input: string) {
   const text = input.toLowerCase().trim();
   
   if (text.length < 3) return false;
-  
   // Relaxed length check for OCR noise
   if (text.split(" ").length > 500) return false; 
   
@@ -122,7 +122,6 @@ function mockEnhanceData(
   context: string,
   ingredientsInput: string
 ): AnalysisResponse {
-  // IF INVALID, RETURN AS IS
   if (data.intent === "Invalid input") {
     return data;
   }
@@ -541,7 +540,12 @@ export default function Page() {
   // --- OCR / SCANNER STATE ---
   const [isScanning, setIsScanning] = useState(false);
   const [scanningStatus, setScanningStatus] = useState("Initializing...");
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Ref for Camera (direct mobile scan)
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  // Ref for Gallery (file picker)
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  
   const resultRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -762,27 +766,53 @@ export default function Page() {
             <FlaskConical size={20} /> Ingredient Input
           </h2>
           
-          {/* UPDATED INPUT with capture="environment" for mobile camera support */}
+          {/* --- HIDDEN INPUTS --- */}
+          {/* 1. Camera Input (Mobile Only) */}
           <input
             type="file"
             accept="image/*"
-            capture="environment"
-            ref={fileInputRef}
+            capture="environment" // Forces Camera
+            ref={cameraInputRef}
+            style={{ display: "none" }}
+            onChange={handleFileUpload}
+          />
+          {/* 2. Gallery/File Input */}
+          <input
+            type="file"
+            accept="image/*"
+            ref={galleryInputRef}
             style={{ display: "none" }}
             onChange={handleFileUpload}
           />
           
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              display: "flex", alignItems: "center", gap: 6,
-              fontSize: 12, padding: "6px 12px", borderRadius: 8,
-              background: "var(--card)", border: "1px solid var(--primary)",
-              color: "var(--primary)", cursor: "pointer"
-            }}
-          >
-            <Camera size={16} /> Scan Label
-          </button>
+          {/* --- BUTTON GROUP --- */}
+          <div style={{ display: "flex", gap: 10 }}>
+            {/* Scan Button */}
+            <button
+              onClick={() => cameraInputRef.current?.click()}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                fontSize: 12, padding: "6px 12px", borderRadius: 8,
+                background: "var(--card)", border: "1px solid var(--primary)",
+                color: "var(--primary)", cursor: "pointer"
+              }}
+            >
+              <Camera size={16} /> Scan
+            </button>
+
+            {/* Upload Button */}
+            <button
+              onClick={() => galleryInputRef.current?.click()}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                fontSize: 12, padding: "6px 12px", borderRadius: 8,
+                background: "var(--card)", border: "1px solid var(--muted)",
+                color: "var(--text)", cursor: "pointer"
+              }}
+            >
+              <Upload size={16} /> Upload
+            </button>
+          </div>
         </div>
 
         <div style={{ position: "relative" }}>
