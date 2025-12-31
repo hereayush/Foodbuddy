@@ -450,7 +450,7 @@ export default function Page() {
   useEffect(() => { if (result && resultRef.current) resultRef.current.scrollIntoView({ behavior: "smooth", block: "start" }); }, [result]);
 
   return (
-    <main style={{ maxWidth: 1000, margin: "20px auto", padding: "20px 16px" }}> {/* Mobile Adjusted Padding */}
+    <main style={{ maxWidth: 1000, margin: "20px auto", padding: "20px 16px" }}>
       <header className="reveal" style={{ marginBottom: 48, padding: "36px 32px", borderRadius: 22, background: "linear-gradient(135deg, rgba(34,197,94,0.15), rgba(20,184,166,0.08))", border: "1px solid var(--border)", position: "relative" }}>
         <button onClick={toggleTheme} aria-label="Toggle dark mode" style={{ position: "absolute", top: 20, right: 20, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", padding: "6px 10px", borderRadius: 8, cursor: "pointer" }}>{theme === "light" ? "🌙 Dark" : "☀️ Light"}</button>
         <h1 style={{ fontSize: "clamp(32px, 5vw, 42px)", fontWeight: 800, marginBottom: 10 }}>FoodBuddy</h1>
@@ -459,14 +459,12 @@ export default function Page() {
       </header>
 
       <section className="card reveal" style={{ marginBottom: 36, position: 'relative' }}>
-        {/* --- MOBILE RESPONSIVE HEADER --- */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
           <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}><FlaskConical size={20} /> Ingredient Input</h2>
           
           <input type="file" accept="image/*" capture="environment" ref={cameraInputRef} style={{ display: "none" }} onChange={handleFileUpload} />
           <input type="file" accept="image/*" ref={galleryInputRef} style={{ display: "none" }} onChange={handleFileUpload} />
           
-          {/* --- WRAPPABLE BUTTON GROUP --- */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button onClick={() => cameraInputRef.current?.click()} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "6px 12px", borderRadius: 8, background: "var(--card)", border: "1px solid var(--primary)", color: "var(--primary)", cursor: "pointer" }}><Camera size={16} /> Scan</button>
             <button onClick={() => galleryInputRef.current?.click()} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "6px 12px", borderRadius: 8, background: "var(--card)", border: "1px solid var(--muted)", color: "var(--text)", cursor: "pointer" }}><Upload size={16} /> Upload</button>
@@ -499,7 +497,30 @@ export default function Page() {
           <div className="section-title"><History size={22} /><h2>Recent Analyses</h2></div>
           {history.map((item) => (
             <div key={item.id} className="card" style={{ marginBottom: 12, cursor: "pointer" }} onClick={() => { setIngredients(item.ingredients); setResult(item.result); if (item.context) setContext(item.context); }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}><strong>{item.ingredients.substring(0, 50)}...</strong>{item.context && <span style={{ fontSize: 10, background: "var(--muted)", color: "white", padding: "2px 6px", borderRadius: 4 }}>{item.context.toUpperCase()}</span>}</div>
+              {/* --- FIXED MOBILE OVERFLOW --- */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                <strong style={{ 
+                  whiteSpace: "nowrap", 
+                  overflow: "hidden", 
+                  textOverflow: "ellipsis", 
+                  flex: 1, 
+                  minWidth: 0 
+                }}>
+                  {item.ingredients}
+                </strong>
+                {item.context && (
+                  <span style={{ 
+                    fontSize: 10, 
+                    background: "var(--muted)", 
+                    color: "white", 
+                    padding: "2px 6px", 
+                    borderRadius: 4,
+                    flexShrink: 0 
+                  }}>
+                    {item.context.toUpperCase()}
+                  </span>
+                )}
+              </div>
               <p style={{ fontSize: 12, color: "var(--muted)" }}>{new Date(item.timestamp).toLocaleString()}</p>
             </div>
           ))}
