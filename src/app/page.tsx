@@ -36,6 +36,7 @@ import {
   Microscope,
   ThumbsUp,
   ThumbsDown,
+  Utensils,
 } from "lucide-react";
 import {
   BarChart,
@@ -73,6 +74,11 @@ type AnalysisResponse = {
     name: string;
     type: "good" | "bad" | "neutral";
     description: string;
+  }[];
+  dietary?: {
+    name: string;
+    status: "safe" | "unsafe" | "warning";
+    reason?: string;
   }[];
 };
 
@@ -143,6 +149,20 @@ function getBestForTags(itemA: AnalysisResponse, itemB: AnalysisResponse) {
   return { winner: winnerText, tags };
 }
 
+// --- NEW: VERDICT GENERATOR ---
+function getVerdict(score: number, dietary: any[]) {
+  // 1. Check for red flags in dietary
+  const unsafeDiet = dietary.find(d => d.status === "unsafe");
+  if (unsafeDiet) {
+    return `⚠️ Caution: This product is NOT ${unsafeDiet.name}-friendly due to ${unsafeDiet.reason}.`;
+  }
+
+  // 2. Check Health Score
+  if (score >= 80) return "✅ Excellent Choice! This product has a clean, natural profile.";
+  if (score >= 50) return "⚖️ Moderate Choice. Contains some processed ingredients; consume in moderation.";
+  return "❌ Highly Processed. Contains multiple additives or high sugar levels. Limit consumption.";
+}
+
 /* --------- 🔒 FRONTEND INPUT VALIDATION --------- */
 function looksLikeIngredientInput(input: string) {
   const bannedKeywords = [
@@ -169,6 +189,35 @@ function mockEnhanceData(
   const enhanced = { ...data };
   const lowerInput = ingredientsInput.toLowerCase();
   const alternatives = [];
+
+  // --- DIETARY CHECK LOGIC ---
+  const diets: { name: string; status: "safe" | "unsafe" | "warning"; reason?: string }[] = [];
+  
+  // Vegan
+  if (lowerInput.match(/milk|whey|casein|cheese|butter|cream|yogurt|lactose|egg|honey|beef|chicken|pork|gelatin/)) {
+    diets.push({ name: "Vegan", status: "unsafe", reason: "Animal Products" });
+  } else {
+    diets.push({ name: "Vegan", status: "safe" });
+  }
+
+  // Gluten-Free
+  if (lowerInput.match(/wheat|barley|rye|malt|gluten|flour/)) {
+    if (!lowerInput.includes("almond flour") && !lowerInput.includes("coconut flour") && !lowerInput.includes("rice flour")) {
+      diets.push({ name: "Gluten-Free", status: "unsafe", reason: "Contains Gluten" });
+    } else {
+      diets.push({ name: "Gluten-Free", status: "safe" });
+    }
+  } else {
+    diets.push({ name: "Gluten-Free", status: "safe" });
+  }
+
+  // Keto
+  if (lowerInput.match(/sugar|syrup|dextrose|fructose|maltodextrin|corn|potato|rice|flour|oats/)) {
+    diets.push({ name: "Keto", status: "unsafe", reason: "High Carbs" });
+  } else {
+    diets.push({ name: "Keto", status: "safe" });
+  }
+  enhanced.dietary = diets;
 
   // --- SPOTLIGHT GENERATION ---
   const spotlight = [];
@@ -316,6 +365,31 @@ const IngredientXRay = ({ breakdown }: { breakdown: { natural: number; processed
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: "#22c55e" }} /><span>Natural ({breakdown.natural}%)</span></div>
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: "#f59e0b" }} /><span>Processed ({breakdown.processed}%)</span></div>
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: "#ef4444" }} /><span>Additives ({breakdown.additives}%)</span></div>
+      </div>
+    </div>
+  );
+};
+
+const DietaryMatrix = ({ items }: { items: { name: string; status: "safe" | "unsafe" | "warning"; reason?: string }[] }) => {
+  if (!items || items.length === 0) return null;
+
+  return (
+    <div style={{ marginBottom: 30 }}>
+      <div className="section-title"><Utensils size={22} /><h2>Dietary Checks</h2></div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: 10 }}>
+        {items.map((item, i) => (
+          <div key={i} style={{ 
+            padding: 10, borderRadius: 10, textAlign: "center",
+            background: item.status === "safe" ? "#f0fdf4" : "#fef2f2",
+            border: `1px solid ${item.status === "safe" ? "#bbf7d0" : "#fecaca"}`
+          }}>
+            <div style={{ marginBottom: 4, display: "flex", justifyContent: "center" }}>
+              {item.status === "safe" ? <CheckCircle2 size={20} color="#16a34a" /> : <XCircle size={20} color="#dc2626" />}
+            </div>
+            <strong style={{ fontSize: 12, color: "var(--text)", display: "block" }}>{item.name}</strong>
+            {item.reason && <span style={{ fontSize: 10, color: "#dc2626", display: "block", marginTop: 2 }}>{item.reason}</span>}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -604,7 +678,6 @@ export default function Page() {
         </section>
       )}
 
-      {/* --- INPUT SECTION (Only show if NO result is visible) --- */}
       {!result && (
       <section className="card reveal" style={{ marginBottom: 36, position: 'relative' }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
@@ -647,7 +720,6 @@ export default function Page() {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
                 <strong style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: 0 }}>{item.ingredients}</strong>
                 {item.context && <span style={{ fontSize: 10, background: "var(--muted)", color: "white", padding: "2px 6px", borderRadius: 4, flexShrink: 0 }}>{item.context.toUpperCase()}</span>}
-                {/* --- NEW: DELETE BUTTON --- */}
                 <button onClick={(e) => deleteHistoryItem(item.id, e)} style={{ border: "none", background: "none", cursor: "pointer", padding: 4, color: "var(--muted)" }}>
                   <Trash2 size={16} />
                 </button>
@@ -661,21 +733,10 @@ export default function Page() {
 
       {error && <p style={{ color: "red" }}>{error}</p>}
 
-      {/* ================= RESULTS / COMPARISON VIEW ================= */}
       {result && (
         <section ref={resultRef} className="fade-in">
-          {/* --- NEW: BACK TO HOME BUTTON (Styled) --- */}
           <div style={{ marginBottom: 16 }}>
-            <button 
-              onClick={backToHome} 
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 8,
-                padding: "8px 16px", borderRadius: "99px",
-                background: "var(--card)", border: "1px solid var(--border)",
-                color: "var(--text)", fontSize: 14, fontWeight: 600,
-                cursor: "pointer", boxShadow: "0 2px 4px rgba(0,0,0,0.05)"
-              }}
-            >
+            <button onClick={backToHome} style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 16px", borderRadius: "99px", background: "var(--card)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 14, fontWeight: 600, cursor: "pointer", boxShadow: "0 2px 4px rgba(0,0,0,0.05)" }}>
               <ArrowLeft size={18} /> Back to Input
             </button>
           </div>
@@ -738,8 +799,19 @@ export default function Page() {
           ) : (
             <>
               <div className="section-title"><BarChart3 size={22} /><h2>Overview</h2></div>
-              <p style={{ marginBottom: 24 }}>{result.intent}</p>
               
+              <p style={{ 
+                marginBottom: 24, 
+                fontSize: 16, 
+                fontWeight: 500,
+                color: calculateHealthScore(result.risks) > 50 ? "var(--text)" : "#dc2626" 
+              }}>
+                {result.dietary 
+                  ? getVerdict(calculateHealthScore(result.risks), result.dietary) 
+                  : result.summary.split('.')[0] + "."} 
+              </p>
+              
+              {result.dietary && <DietaryMatrix items={result.dietary} />}
               {result.breakdown && <IngredientXRay breakdown={result.breakdown} />}
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20, marginBottom: 30 }}>
