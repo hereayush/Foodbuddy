@@ -28,9 +28,9 @@ import {
   Share2,
   Trophy,
   ArrowLeft,
-  Split, // Used for the Compare Button
+  Split, 
+  ArrowRightLeft
 } from "lucide-react";
-// --- Recharts imports ---
 import {
   BarChart,
   Bar,
@@ -42,7 +42,6 @@ import {
   PieChart,
   Pie,
 } from "recharts";
-// --- Tesseract for Real OCR ---
 import { recognize } from "tesseract.js";
 
 /* ---------------- TYPES ---------------- */
@@ -103,26 +102,10 @@ function calculateHealthScore(risks: any[]) {
 /* --------- 🔒 FRONTEND INPUT VALIDATION --------- */
 function looksLikeIngredientInput(input: string) {
   const bannedKeywords = [
-    "chatgpt",
-    "fabric",
-    "cloth",
-    "clothes",
-    "shirt",
-    "pants",
-    "mobile",
-    "phone",
-    "laptop",
-    "program",
-    "who are you",
-    "what is",
-    "how to",
-    "how are you",
-    "hello",
-    "hi ",
-    "hey",
-    "table",
-    "wood",
-    "plastic",
+    "chatgpt", "fabric", "cloth", "clothes", "shirt", "pants",
+    "mobile", "phone", "laptop", "program", "who are you",
+    "what is", "how to", "how are you", "hello", "hi ", "hey",
+    "table", "wood", "plastic",
   ];
 
   const text = input.toLowerCase().trim();
@@ -144,80 +127,29 @@ function mockEnhanceData(
   const alternatives = [];
 
   // 1. Sugary / Soda Logic
-  if (
-    lowerInput.includes("syrup") ||
-    lowerInput.includes("sugar") ||
-    lowerInput.includes("cane") ||
-    lowerInput.includes("dextrose") ||
-    lowerInput.includes("soda") ||
-    lowerInput.includes("coke")
-  ) {
+  if (lowerInput.includes("syrup") || lowerInput.includes("sugar") || lowerInput.includes("cane") || lowerInput.includes("soda")) {
     if (context === "kids") {
-      alternatives.push({
-        title: "Hydration for Kids",
-        description: "Try water infused with berries or diluted 100% fruit juice.",
-      });
-    } else if (context === "athlete") {
-      alternatives.push({
-        title: "Electrolyte Focus",
-        description: "Coconut water provides natural electrolytes without processed sugars.",
-      });
+      alternatives.push({ title: "Hydration for Kids", description: "Try water infused with berries or diluted 100% fruit juice." });
     } else {
-      alternatives.push({
-        title: "Natural Sweeteners",
-        description: "Consider Stevia, Monk Fruit, or Erythritol to avoid spikes.",
-      });
-      alternatives.push({
-        title: "Whole Food Option",
-        description: "Fresh fruit provides sweetness with added fiber.",
-      });
+      alternatives.push({ title: "Natural Sweeteners", description: "Consider Stevia or Monk Fruit to avoid spikes." });
     }
   }
 
   // 2. Salty / Chips / Fried Logic
-  if (
-    lowerInput.includes("oil") ||
-    lowerInput.includes("fried") ||
-    lowerInput.includes("chip") ||
-    lowerInput.includes("potato") ||
-    lowerInput.includes("salt") ||
-    lowerInput.includes("sodium")
-  ) {
-    alternatives.push({
-      title: "Crunchy Alternatives",
-      description: "Air-popped popcorn or roasted chickpeas offer crunch with less fat.",
-    });
-    alternatives.push({
-      title: "Baked, Not Fried",
-      description: "Look for baked vegetable chips to reduce calorie density.",
-    });
-  }
-
-  // 3. Caffeine Logic
-  if (lowerInput.includes("caffeine") || lowerInput.includes("coffee") || lowerInput.includes("energy")) {
-    alternatives.push({
-      title: "Sustained Energy",
-      description: "Green tea or Matcha provides a milder boost with antioxidants.",
-    });
+  if (lowerInput.includes("oil") || lowerInput.includes("fried") || lowerInput.includes("chip") || lowerInput.includes("salt")) {
+    alternatives.push({ title: "Crunchy Alternatives", description: "Air-popped popcorn or roasted chickpeas offer crunch with less fat." });
   }
 
   // Fallback
   if (alternatives.length === 0) {
-    alternatives.push({
-      title: "Whole Food Option",
-      description: "Choose whole, unprocessed versions of these ingredients.",
-    });
+    alternatives.push({ title: "Whole Food Option", description: "Choose whole, unprocessed versions of these ingredients." });
   }
 
   enhanced.alternatives = alternatives;
   enhanced.risks = data.risks.map((r) => ({
     ...r,
     confidence: Math.random() > 0.4 ? "High" : "Medium",
-    simple_explanation: `In simple terms: This is added for ${
-      r.title.includes("Sugar") ? "flavor" : "texture/preservation"
-    }, but ${
-      context === "kids" ? "parents should be cautious." : "it offers little nutrition."
-    }`,
+    simple_explanation: `In simple terms: This is added for ${r.title.includes("Sugar") ? "flavor" : "texture/preservation"}, but ${context === "kids" ? "parents should be cautious." : "it offers little nutrition."}`,
   }));
 
   return enhanced;
@@ -348,6 +280,8 @@ const AlternativesSection = ({ alternatives }: { alternatives: { title: string; 
 /* ---------------- PAGE ---------------- */
 export default function Page() {
   const [ingredients, setIngredients] = useState("");
+  const [ingredientsB, setIngredientsB] = useState(""); // For Compare Mode
+  
   const [context, setContext] = useState("general");
   const [result, setResult] = useState<AnalysisResponse | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -365,6 +299,7 @@ export default function Page() {
   const [isChatLoading, setIsChatLoading] = useState(false);
 
   // --- COMPARE MODE STATE ---
+  const [isCompareMode, setIsCompareMode] = useState(false);
   const [compareItem, setCompareItem] = useState<AnalysisResponse | null>(null);
   
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -392,52 +327,65 @@ export default function Page() {
     localStorage.setItem("foodbuddy-history", JSON.stringify(updated));
   };
 
-  const handleAnalyze = async (textOverride?: string, isComparing = false) => {
-    setLoading(true); setError(null); 
-    // IMPORTANT: If we are starting a comparison, we DON'T clear the result yet
-    if (!isComparing) {
-      setResult(null); 
-      setChatResponse(null);
-    }
-
-    const textToAnalyze = textOverride || ingredients;
-    if (!looksLikeIngredientInput(textToAnalyze)) {
-      setError("FoodBuddy analyzes food ingredients only. Please ensure the scan is clear or enter a valid list.");
-      setLoading(false);
-      return;
-    }
-    try {
-      const res = await fetch("/api/analyze", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ingredients: textToAnalyze }),
-      });
-      if (!res.ok) throw new Error("Analysis failed");
-      let data: AnalysisResponse = await res.json();
-      data = mockEnhanceData(data, context, textToAnalyze);
-      
-      setResult(data);
-      if (data.intent !== "Invalid input") saveToHistory(textToAnalyze, data, context);
-    } catch (err: any) { setError(err.message); } finally { setLoading(false); }
+  const fetchAnalysis = async (text: string) => {
+    const res = await fetch("/api/analyze", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ingredients: text }),
+    });
+    if (!res.ok) throw new Error("Analysis failed");
+    let data: AnalysisResponse = await res.json();
+    return mockEnhanceData(data, context, text);
   };
 
-  // Wrapper for the Analyze button to handle Compare Mode triggering
-  const handleAnalyzeClick = () => {
-    if (compareItem) {
-      // If we are already in compare mode, analyze normally (which will fill 'result' slot B)
-      handleAnalyze();
-    } else {
-      // Normal analysis
-      handleAnalyze();
+  const handleAnalyze = async () => {
+    setLoading(true); setError(null); setResult(null); setChatResponse(null); setCompareItem(null);
+    
+    // SINGLE MODE
+    if (!isCompareMode) {
+      if (!looksLikeIngredientInput(ingredients)) {
+        setError("FoodBuddy analyzes food ingredients only. Please ensure the scan is clear or enter a valid list.");
+        setLoading(false); return;
+      }
+      try {
+        const data = await fetchAnalysis(ingredients);
+        setResult(data);
+        if (data.intent !== "Invalid input") saveToHistory(ingredients, data, context);
+      } catch (err: any) { setError(err.message); } finally { setLoading(false); }
+    } 
+    // COMPARE MODE
+    else {
+      if (!looksLikeIngredientInput(ingredients) || !looksLikeIngredientInput(ingredientsB)) {
+        setError("Please enter valid food ingredients for BOTH products.");
+        setLoading(false); return;
+      }
+      try {
+        const [dataA, dataB] = await Promise.all([
+          fetchAnalysis(ingredients),
+          fetchAnalysis(ingredientsB)
+        ]);
+        setCompareItem(dataA); 
+        setResult(dataB);      
+      } catch (err: any) { setError("Failed to compare items. Please try again."); } finally { setLoading(false); }
     }
   };
 
-  // Trigger Compare Mode FROM INPUT BOX
+  const toggleCompareMode = () => {
+    setIsCompareMode(!isCompareMode);
+    setResult(null);
+    setCompareItem(null);
+    setIngredients("");
+    setIngredientsB("");
+    setError(null);
+  };
+
   const handleTriggerCompare = () => {
     if (!result) return;
-    setCompareItem(result); // Save current result as A
-    setResult(null); // Clear result slot B
-    setIngredients(""); // Clear text for new input
-    // User remains in input section, ready to type Item B
+    setIsCompareMode(true); // Switch UI to compare mode
+    setIngredientsB("");    // Clear B input
+    setIngredients(ingredients); // Keep current A input
+    // The previous result is effectively lost from view until they re-run, 
+    // but this flows better for "start over with compare"
+    setResult(null); 
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -445,29 +393,22 @@ export default function Page() {
     if (!file) return;
     if (!file.type.startsWith("image/")) { setError("Invalid file type."); return; }
     setError(null); 
-    // Don't clear result if we are in middle of compare flow (unless we want to replace it)
     if (!compareItem) setResult(null);
     
     setIsScanning(true); setScanningStatus("Preprocessing...");
     try {
       if (file.name.toLowerCase().includes("invalid")) throw new Error("⚠️ Could not detect food ingredients.");
-      if (file.name.toLowerCase().includes("random")) {
-        setScanningStatus("Detecting...");
-        setTimeout(() => {
-          setIsScanning(false);
-          const irrelevantText = "Table, Wood, Plastic, 100% Cotton, Made in China";
-          setIngredients(irrelevantText);
-          handleAnalyze(irrelevantText);
-        }, 1500);
-        return;
-      }
       setScanningStatus("Reading Text...");
       const { data: { text } } = await recognize(file, 'eng', { logger: (m) => { if (m.status === 'recognizing text') setScanningStatus(`Reading... ${Math.round(m.progress * 100)}%`); } });
       setIsScanning(false);
       const cleanText = text.replace(/\n/g, ", ").replace(/,\s*,/g, ",").trim();
-      if (cleanText.length < 5) throw new Error("Could not read enough text. Try a clearer image.");
-      setIngredients(cleanText);
-      handleAnalyze(cleanText);
+      
+      if (isCompareMode && ingredients.length > 5) {
+        setIngredientsB(cleanText);
+      } else {
+        setIngredients(cleanText);
+      }
+      
     } catch (err: any) { setIsScanning(false); setError(err.message || "Failed to scan image."); }
   };
 
@@ -480,7 +421,11 @@ export default function Page() {
     setIsListening(true);
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
-      setIngredients((prev) => (prev ? prev + " " + transcript : transcript));
+      if (isCompareMode && ingredients.length > 5) {
+        setIngredientsB((prev) => (prev ? prev + " " + transcript : transcript));
+      } else {
+        setIngredients((prev) => (prev ? prev + " " + transcript : transcript));
+      }
       setIsListening(false);
     };
     recognition.onerror = () => setIsListening(false); recognition.onend = () => setIsListening(false);
@@ -494,9 +439,11 @@ export default function Page() {
   };
 
   const cancelComparison = () => {
+    setIsCompareMode(false);
     setCompareItem(null);
     setResult(null);
     setIngredients("");
+    setIngredientsB("");
   };
 
   const handleAskQuestion = () => {
@@ -506,17 +453,9 @@ export default function Page() {
     setTimeout(() => {
       setIsChatLoading(false);
       const q = question.toLowerCase();
-      if (q.includes("child") || q.includes("kid") || q.includes("toddler") || q.includes("baby")) {
-        setChatResponse("For children, I'd recommend limiting this due to the high sugar content and artificial colors, which can impact attention.");
-      } else if (q.includes("vegan") || q.includes("vegetarian")) {
-        setChatResponse("Based on the ingredients, this appears to be vegan-friendly as there are no obvious animal-derived additives.");
-      } else if (q.includes("weight") || q.includes("diet") || q.includes("fat") || q.includes("keto")) {
-        setChatResponse("If you're watching your weight, be careful. The combination of high fats and refined carbs makes this calorie-dense.");
-      } else if (q.includes("safe") || q.includes("bad") || q.includes("cancer")) {
-         setChatResponse("While generally recognized as safe by regulators, some ingredients here have controversial studies regarding long-term health effects.");
-      } else {
-        setChatResponse("That's a great question. Given the processed nature of these ingredients, moderation is key. Consider the healthier alternatives listed above.");
-      }
+      if (q.includes("child") || q.includes("kid")) setChatResponse("For children, I'd recommend limiting this due to sugar content.");
+      else if (q.includes("vegan")) setChatResponse("Based on ingredients, this appears to be vegan-friendly.");
+      else setChatResponse("Given the ingredients, moderation is key.");
     }, 1500);
   };
 
@@ -524,6 +463,15 @@ export default function Page() {
 
   return (
     <main style={{ maxWidth: 1000, margin: "20px auto", padding: "20px 16px" }}>
+      {/* --- BLUE SHINE ANIMATION STYLE --- */}
+      <style>{`
+        @keyframes blue-pulse {
+          0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+          70% { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+      `}</style>
+
       <header className="reveal" style={{ marginBottom: 48, padding: "36px 32px", borderRadius: 22, background: "linear-gradient(135deg, rgba(34,197,94,0.15), rgba(20,184,166,0.08))", border: "1px solid var(--border)", position: "relative" }}>
         <button onClick={toggleTheme} aria-label="Toggle dark mode" style={{ position: "absolute", top: 20, right: 20, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", padding: "6px 10px", borderRadius: 8, cursor: "pointer" }}>{theme === "light" ? "🌙 Dark" : "☀️ Light"}</button>
         <h1 style={{ fontSize: "clamp(32px, 5vw, 42px)", fontWeight: 800, marginBottom: 10 }}>FoodBuddy</h1>
@@ -531,23 +479,10 @@ export default function Page() {
         <span style={{ display: "inline-block", marginTop: 14, padding: "6px 14px", borderRadius: 999, background: "rgba(34,197,94,0.15)", color: "var(--primary)", fontSize: 12, fontWeight: 600 }}>AI-Native Ingredient Intelligence</span>
       </header>
 
-      {/* --- COMPARISON BANNER --- */}
-      {compareItem && !result && (
-        <section className="card reveal" style={{ marginBottom: 20, background: "rgba(59,130,246,0.1)", border: "1px solid #93c5fd" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <h3 style={{ color: "#1e3a8a", display: "flex", alignItems: "center", gap: 8 }}><Split size={20} /> Comparison Mode Active</h3>
-              <p style={{ fontSize: 14, color: "#1e40af" }}>You are comparing against the previous item. <strong>Scan or Enter Item B now.</strong></p>
-            </div>
-            <button onClick={cancelComparison} style={{ background: "white", color: "#ef4444", border: "1px solid #fca5a5", padding: "6px 12px", borderRadius: 8, cursor: "pointer", fontSize: 12 }}>Cancel</button>
-          </div>
-        </section>
-      )}
-
       {/* --- INPUT SECTION --- */}
       <section className="card reveal" style={{ marginBottom: 36, position: 'relative' }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
-          <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}><FlaskConical size={20} /> {compareItem ? "Input Item B" : "Ingredient Input"}</h2>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
+          <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}><FlaskConical size={20} /> {isCompareMode ? "Compare Products" : "Ingredient Input"}</h2>
           <input type="file" accept="image/*" capture="environment" ref={cameraInputRef} style={{ display: "none" }} onChange={handleFileUpload} />
           <input type="file" accept="image/*" ref={galleryInputRef} style={{ display: "none" }} onChange={handleFileUpload} />
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -556,53 +491,56 @@ export default function Page() {
             <button onClick={toggleListening} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "6px 12px", borderRadius: 8, background: isListening ? "#fecaca" : "var(--card)", border: isListening ? "1px solid #ef4444" : "1px solid var(--muted)", color: isListening ? "#dc2626" : "var(--text)", cursor: "pointer", transition: "all 0.2s" }}>{isListening ? <MicOff size={16} className="animate-pulse" /> : <Mic size={16} />}{isListening ? "Listening..." : "Voice"}</button>
           </div>
         </div>
-        <div style={{ position: "relative" }}>
-          <textarea rows={4} placeholder={compareItem ? "Enter ingredients for the second item..." : "Type ingredients, scan a label, or use voice..."} style={{ width: "100%", marginTop: 14, opacity: isScanning ? 0.5 : 1 }} value={ingredients} onChange={(e) => setIngredients(e.target.value)} disabled={isScanning} />
-          {isScanning && <div style={{ position: "absolute", inset: 0, marginTop: 14, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.8)", backdropFilter: "blur(2px)", borderRadius: 12, color: "var(--primary)", fontWeight: 600 }}><Loader2 className="spin" size={32} style={{ marginBottom: 8 }} />{scanningStatus}</div>}
-        </div>
+
+        {/* --- DUAL INPUT FOR COMPARE MODE --- */}
+        {isCompareMode ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", marginBottom: 4, display: "block" }}>PRODUCT A</label>
+              <textarea rows={3} placeholder="Enter first product ingredients..." style={{ width: "100%" }} value={ingredients} onChange={(e) => setIngredients(e.target.value)} />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", marginBottom: 4, display: "block" }}>PRODUCT B</label>
+              <textarea rows={3} placeholder="Enter second product ingredients..." style={{ width: "100%" }} value={ingredientsB} onChange={(e) => setIngredientsB(e.target.value)} />
+            </div>
+          </div>
+        ) : (
+          <div style={{ position: "relative" }}>
+            <textarea rows={4} placeholder="Type ingredients, scan a label, or use voice..." style={{ width: "100%" }} value={ingredients} onChange={(e) => setIngredients(e.target.value)} disabled={isScanning} />
+            {isScanning && <div style={{ position: "absolute", inset: 0, marginTop: 14, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.8)", backdropFilter: "blur(2px)", borderRadius: 12, color: "var(--primary)", fontWeight: 600 }}><Loader2 className="spin" size={32} style={{ marginBottom: 8 }} />{scanningStatus}</div>}
+          </div>
+        )}
+
         <div style={{ marginTop: 16 }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)" }}>ANALYZE AS:</span>
           <ContextSelector selected={context} onSelect={setContext} />
         </div>
-        <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          <button className="primary" onClick={handleAnalyzeClick} disabled={loading || isScanning || !ingredients.trim()}>{compareItem ? "Compare Items" : "Analyze Ingredients"}</button>
-          
-          {/* --- NEW: COMPARE BUTTON IN INPUT (Visible when Result exists) --- */}
-          {result && !compareItem && result.intent !== "Invalid input" && (
-            <button 
-              onClick={handleTriggerCompare}
-              style={{
-                display: "flex", alignItems: "center", gap: 8,
-                padding: "10px 20px", borderRadius: 8, fontWeight: 600,
-                background: "var(--card)", border: "2px solid #3b82f6", color: "#2563eb",
-                cursor: "pointer"
-              }}
-            >
-              <Split size={18} /> Compare with this
-            </button>
-          )}
+
+        <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <button className="primary" onClick={handleAnalyze} disabled={loading || isScanning || !ingredients.trim()}>
+            {isCompareMode ? "Compare Products" : "Analyze Ingredients"}
+          </button>
+
+          {/* --- SHINING COMPARE TOGGLE BUTTON --- */}
+          <button 
+            onClick={toggleCompareMode}
+            style={{ 
+              display: "flex", alignItems: "center", gap: 8, 
+              padding: "10px 16px", borderRadius: 8, fontWeight: 600, 
+              background: isCompareMode ? "#eff6ff" : "var(--card)", 
+              border: "2px solid #3b82f6", // Always blue border
+              color: isCompareMode ? "#1d4ed8" : "#2563eb", 
+              cursor: "pointer",
+              animation: "blue-pulse 2s infinite" // Blue shining animation
+            }}
+          >
+            {isCompareMode ? <ArrowLeft size={18} /> : <ArrowRightLeft size={18} />}
+            {isCompareMode ? "Back to Single" : "Compare Mode"}
+          </button>
 
           {loading && <div className="loading" aria-live="polite">Analyzing <span className="dot" /><span className="dot" /><span className="dot" /></div>}
         </div>
       </section>
-
-      {history.length > 0 && !result && !compareItem && (
-        <section className="card reveal" style={{ marginBottom: 36 }}>
-          <div className="section-title"><History size={22} /><h2>Recent Analyses</h2></div>
-          {history.map((item) => (
-            <div key={item.id} className="card" style={{ marginBottom: 12, cursor: "pointer" }} onClick={() => { setIngredients(item.ingredients); setResult(item.result); if (item.context) setContext(item.context); }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-                <strong style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: 0 }}>{item.ingredients}</strong>
-                {item.context && <span style={{ fontSize: 10, background: "var(--muted)", color: "white", padding: "2px 6px", borderRadius: 4, flexShrink: 0 }}>{item.context.toUpperCase()}</span>}
-              </div>
-              <p style={{ fontSize: 12, color: "var(--muted)" }}>{new Date(item.timestamp).toLocaleString()}</p>
-            </div>
-          ))}
-          <button className="primary" style={{ marginTop: 12 }} onClick={() => { setHistory([]); localStorage.removeItem("foodbuddy-history"); }}><Trash2 size={16} /> Clear History</button>
-        </section>
-      )}
-
-      {error && <p style={{ color: "red" }}>{error}</p>}
 
       {/* ================= RESULTS / COMPARISON VIEW ================= */}
       {result && (
@@ -614,33 +552,34 @@ export default function Page() {
               <p style={{ color: "#7f1d1d", fontSize: 15, lineHeight: 1.6 }}>FoodBuddy is designed to analyze <strong>food ingredients only</strong>.</p>
             </div>
           ) : compareItem ? (
-            /* --- COMPARISON MODE UI --- */
-            <div className="card" style={{ padding: "24px", border: "2px solid #3b82f6" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                <h2 style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 22 }}><Split size={24} /> Comparison Result</h2>
+            /* --- COMPARISON RESULT --- */
+            <div className="card" style={{ padding: "clamp(16px, 3vw, 24px)", border: "2px solid #3b82f6" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
+                <h2 style={{ display: "flex", alignItems: "center", gap: 10, fontSize: "clamp(18px, 4vw, 22px)" }}><Split size={24} /> Comparison Result</h2>
                 <button onClick={cancelComparison} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, background: "var(--card)", border: "1px solid var(--border)", padding: "6px 12px", borderRadius: 8, cursor: "pointer" }}><ArrowLeft size={16} /> Exit</button>
               </div>
 
               {/* WINNER BANNER */}
-              <div style={{ background: "rgba(34,197,94,0.1)", border: "1px solid #86efac", borderRadius: 12, padding: 16, marginBottom: 24, display: "flex", alignItems: "center", gap: 12 }}>
-                <Trophy size={28} color="#16a34a" />
+              <div style={{ background: "rgba(34,197,94,0.1)", border: "1px solid #86efac", borderRadius: 12, padding: 16, marginBottom: 24, display: "flex", alignItems: "flex-start", gap: 12 }}>
+                <Trophy size={28} color="#16a34a" style={{ flexShrink: 0 }} />
                 <div>
-                  <h3 style={{ color: "#15803d", margin: 0 }}>
+                  <h3 style={{ color: "#15803d", margin: 0, fontSize: 16 }}>
                     {calculateHealthScore(compareItem.risks) >= calculateHealthScore(result.risks) ? "Product A (First Item)" : "Product B (Second Item)"} looks healthier.
                   </h3>
                   <p style={{ color: "#166534", margin: "4px 0 0", fontSize: 14 }}>Based on fewer detected risks and additives.</p>
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              {/* RESPONSIVE GRID (Stacks on Mobile) */}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
                 {/* ITEM A */}
-                <div style={{ padding: 16, background: "var(--background)", borderRadius: 12, textAlign: "center" }}>
+                <div style={{ flex: "1 1 250px", padding: 16, background: "var(--background)", borderRadius: 12, textAlign: "center" }}>
                   <h4 style={{ color: "var(--muted)", marginBottom: 8 }}>Product A</h4>
                   <HealthScoreGauge risks={compareItem.risks} small />
                   <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 8 }}>{compareItem.risks.length} Risks Detected</p>
                 </div>
                 {/* ITEM B */}
-                <div style={{ padding: 16, background: "var(--background)", borderRadius: 12, textAlign: "center" }}>
+                <div style={{ flex: "1 1 250px", padding: 16, background: "var(--background)", borderRadius: 12, textAlign: "center" }}>
                   <h4 style={{ color: "var(--muted)", marginBottom: 8 }}>Product B</h4>
                   <HealthScoreGauge risks={result.risks} small />
                   <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 8 }}>{result.risks.length} Risks Detected</p>
@@ -669,6 +608,19 @@ export default function Page() {
                 <button className="primary" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8 }} onClick={() => { const text = `Intent: ${result.intent}\nSummary: ${result.summary}`; navigator.clipboard.writeText(text); alert("Analysis copied to clipboard"); }}><Clipboard size={16} /> Copy</button>
                 <button onClick={readSummary} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, cursor: "pointer", padding: "10px" }}><Volume2 size={16} /> Listen</button>
                 <button onClick={() => { if (navigator.share) { navigator.share({ title: 'FoodBuddy Analysis', text: result.summary }); } else { alert("Sharing not supported."); } }} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, cursor: "pointer", padding: "10px" }}><Share2 size={16} /> Share</button>
+                
+                {/* --- SHINING COMPARE WITH THIS BUTTON --- */}
+                <button 
+                  onClick={handleTriggerCompare}
+                  style={{
+                    flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8,
+                    background: "var(--card)", border: "2px solid #3b82f6", color: "#2563eb",
+                    borderRadius: 8, cursor: "pointer", padding: "10px",
+                    animation: "blue-pulse 2s infinite" // Blue shining animation
+                  }}
+                >
+                  <Split size={16} /> Compare
+                </button>
               </div>
 
               {/* ASK FOLLOW-UP */}
@@ -684,6 +636,22 @@ export default function Page() {
               <p style={{ marginTop: 22, fontStyle: "italic", color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}><Info size={16} /> {result.disclaimer}</p>
             </>
           )}
+        </section>
+      )}
+
+      {history.length > 0 && !result && !compareItem && (
+        <section className="card reveal" style={{ marginBottom: 36 }}>
+          <div className="section-title"><History size={22} /><h2>Recent Analyses</h2></div>
+          {history.map((item) => (
+            <div key={item.id} className="card" style={{ marginBottom: 12, cursor: "pointer" }} onClick={() => { setIngredients(item.ingredients); setResult(item.result); if (item.context) setContext(item.context); }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                <strong style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: 0 }}>{item.ingredients}</strong>
+                {item.context && <span style={{ fontSize: 10, background: "var(--muted)", color: "white", padding: "2px 6px", borderRadius: 4, flexShrink: 0 }}>{item.context.toUpperCase()}</span>}
+              </div>
+              <p style={{ fontSize: 12, color: "var(--muted)" }}>{new Date(item.timestamp).toLocaleString()}</p>
+            </div>
+          ))}
+          <button className="primary" style={{ marginTop: 12 }} onClick={() => { setHistory([]); localStorage.removeItem("foodbuddy-history"); }}><Trash2 size={16} /> Clear History</button>
         </section>
       )}
     </main>
