@@ -30,8 +30,10 @@ import {
   ArrowLeft,
   Split,
   ArrowRightLeft,
-  CheckCircle2, 
-  AlertOctagon, // Used for "Detected" warning
+  CheckCircle2,
+  AlertOctagon,
+  List,
+  Microscope, // --- NEW ICON
 } from "lucide-react";
 import {
   BarChart,
@@ -59,6 +61,13 @@ type AnalysisResponse = {
   summary: string;
   disclaimer: string;
   alternatives?: { title: string; description: string }[];
+  _rawLength?: number;
+  // --- NEW: BREAKDOWN STATS ---
+  breakdown?: {
+    natural: number;
+    processed: number;
+    additives: number;
+  };
 };
 
 type HistoryItem = {
@@ -101,7 +110,6 @@ function calculateHealthScore(risks: any[]) {
   return Math.max(0, Math.min(100, score));
 }
 
-// --- COMPARISON REASONING GENERATOR ---
 function generateComparisonInsight(itemA: AnalysisResponse, itemB: AnalysisResponse) {
   const scoreA = calculateHealthScore(itemA.risks);
   const scoreB = calculateHealthScore(itemB.risks);
@@ -111,7 +119,22 @@ function generateComparisonInsight(itemA: AnalysisResponse, itemB: AnalysisRespo
   const loserRisks = scoreA >= scoreB ? itemB.risks : itemA.risks;
   const badIngredient = loserRisks.find(r => getSeverity(r.description) === "high")?.title || "more additives";
 
-  return `We recommend ${winner}. It has a cleaner ingredient profile compared to ${loser}, avoiding concerns like ${badIngredient.toLowerCase()}.`;
+  return `The clear winner is ${winner}. It avoids concerns like ${badIngredient.toLowerCase()} found in ${loser}, making it a safer long-term choice.`;
+}
+
+function getBestForTags(itemA: AnalysisResponse, itemB: AnalysisResponse) {
+  const scoreA = calculateHealthScore(itemA.risks);
+  const scoreB = calculateHealthScore(itemB.risks);
+  const tags = [];
+  
+  const winnerRisks = scoreA >= scoreB ? itemA.risks : itemB.risks;
+  const winnerText = scoreA >= scoreB ? "Product A" : "Product B";
+
+  if (!winnerRisks.some(r => r.title.toLowerCase().includes("sugar"))) tags.push("Weight Loss");
+  if (!winnerRisks.some(r => r.description.toLowerCase().includes("hyperactivity"))) tags.push("Kids");
+  if (calculateHealthScore(winnerRisks) > 80) tags.push("Daily Use");
+  
+  return { winner: winnerText, tags };
 }
 
 /* --------- 🔒 FRONTEND INPUT VALIDATION --------- */
@@ -141,7 +164,34 @@ function mockEnhanceData(
   const lowerInput = ingredientsInput.toLowerCase();
   const alternatives = [];
 
-  // 1. Sugary / Soda Logic
+  // --- NEW: INGREDIENT CLASSIFICATION LOGIC ---
+  // Simple heuristic to guess category based on keywords
+  const ingredientsList = ingredientsInput.split(/,|;/).map(i => i.trim().toLowerCase());
+  let naturalCount = 0;
+  let processedCount = 0;
+  let additivesCount = 0;
+
+  ingredientsList.forEach(ing => {
+    if (ing.includes("extract") || ing.includes("syrup") || ing.includes("flour") || ing.includes("oil") || ing.includes("salt") || ing.includes("sugar")) {
+      processedCount++;
+    } else if (ing.includes("red") || ing.includes("blue") || ing.includes("yellow") || ing.includes("acid") || ing.includes("gum") || ing.includes("benzoate") || ing.includes("sorbate") || ing.includes("glutamate")) {
+      additivesCount++;
+    } else {
+      // Assume unrecognized short words are natural (e.g. "milk", "eggs", "dates")
+      naturalCount++;
+    }
+  });
+  
+  // Normalize counts to percentage-ish for demo
+  const total = naturalCount + processedCount + additivesCount || 1;
+  enhanced.breakdown = {
+    natural: Math.round((naturalCount / total) * 100),
+    processed: Math.round((processedCount / total) * 100),
+    additives: Math.round((additivesCount / total) * 100),
+  };
+  enhanced._rawLength = ingredientsList.length;
+
+  // ... (Existing Logic for Alternatives and Risks) ...
   if (lowerInput.includes("syrup") || lowerInput.includes("sugar") || lowerInput.includes("cane") || lowerInput.includes("soda")) {
     if (context === "kids") {
       alternatives.push({ title: "Hydration for Kids", description: "Try water infused with berries or diluted 100% fruit juice." });
@@ -149,13 +199,12 @@ function mockEnhanceData(
       alternatives.push({ title: "Natural Sweeteners", description: "Consider Stevia or Monk Fruit to avoid spikes." });
     }
   }
-
-  // 2. Salty / Chips / Fried Logic
   if (lowerInput.includes("oil") || lowerInput.includes("fried") || lowerInput.includes("chip") || lowerInput.includes("salt")) {
     alternatives.push({ title: "Crunchy Alternatives", description: "Air-popped popcorn or roasted chickpeas offer crunch with less fat." });
   }
-
-  // Fallback
+  if (lowerInput.includes("caffeine") || lowerInput.includes("coffee")) {
+    alternatives.push({ title: "Sustained Energy", description: "Green tea or Matcha provides a milder boost with antioxidants." });
+  }
   if (alternatives.length === 0) {
     alternatives.push({ title: "Whole Food Option", description: "Choose whole, unprocessed versions of these ingredients." });
   }
@@ -229,6 +278,43 @@ const HealthScoreGauge = ({ risks, small = false }: { risks: { description: stri
   );
 };
 
+/* --------- 🧪 INGREDIENT X-RAY COMPONENT (NEW) --------- */
+const IngredientXRay = ({ breakdown }: { breakdown: { natural: number; processed: number; additives: number } }) => {
+  if (!breakdown) return null;
+  
+  return (
+    <div style={{ marginTop: 20, marginBottom: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 600, color: "var(--muted)", marginBottom: 8 }}>
+        <span>Ingredient Composition</span>
+        <span>{breakdown.additives < 20 ? "✅ Clean Label" : "⚠️ High Processing"}</span>
+      </div>
+      
+      {/* The Bar */}
+      <div style={{ display: "flex", height: 12, borderRadius: 6, overflow: "hidden", width: "100%" }}>
+        <div style={{ width: `${breakdown.natural}%`, background: "#22c55e" }} />
+        <div style={{ width: `${breakdown.processed}%`, background: "#f59e0b" }} />
+        <div style={{ width: `${breakdown.additives}%`, background: "#ef4444" }} />
+      </div>
+
+      {/* The Legend */}
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 11 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ width: 8, height: 8, borderRadius: 2, background: "#22c55e" }} />
+          <span>Natural ({breakdown.natural}%)</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ width: 8, height: 8, borderRadius: 2, background: "#f59e0b" }} />
+          <span>Processed ({breakdown.processed}%)</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ width: 8, height: 8, borderRadius: 2, background: "#ef4444" }} />
+          <span>Additives ({breakdown.additives}%)</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* --------- 🧩 UI COMPONENTS --------- */
 const ContextSelector = ({ selected, onSelect }: { selected: string; onSelect: (c: string) => void }) => {
   const contexts = [
@@ -290,6 +376,16 @@ const AlternativesSection = ({ alternatives }: { alternatives: { title: string; 
       </div>
     </div>
   );
+};
+
+// --- HELPER FOR STATUS BADGES ---
+const StatusBadge = ({ type, detected }: { type: 'bad' | 'good', detected: boolean }) => {
+  if (type === 'bad') {
+    return detected 
+      ? <span style={{ color: "#dc2626", background: "#fef2f2", padding: "4px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}><AlertOctagon size={12} /> DETECTED</span>
+      : <span style={{ color: "#16a34a", background: "#f0fdf4", padding: "4px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}><CheckCircle2 size={12} /> NONE</span>;
+  }
+  return null; 
 };
 
 /* ---------------- PAGE ---------------- */
@@ -439,15 +535,7 @@ export default function Page() {
     }, 1500);
   };
 
-  // Helper to render simple status badges instead of confusing icons
-  const StatusBadge = ({ type, detected }: { type: 'bad' | 'good', detected: boolean }) => {
-    if (type === 'bad') {
-      return detected 
-        ? <span style={{ color: "#dc2626", background: "#fef2f2", padding: "4px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}><AlertOctagon size={12} /> DETECTED</span>
-        : <span style={{ color: "#16a34a", background: "#f0fdf4", padding: "4px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}><CheckCircle2 size={12} /> NONE</span>;
-    }
-    return null; 
-  };
+  const bestFor = result && compareItem ? getBestForTags(compareItem, result) : { winner: "", tags: [] };
 
   useEffect(() => { if (result && resultRef.current) resultRef.current.scrollIntoView({ behavior: "smooth", block: "start" }); }, [result]);
 
@@ -531,52 +619,37 @@ export default function Page() {
                 <h2 style={{ display: "flex", alignItems: "center", gap: 10, fontSize: "clamp(18px, 4vw, 22px)" }}><Split size={24} /> Comparison Result</h2>
                 <button onClick={cancelComparison} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, background: "var(--card)", border: "1px solid var(--border)", padding: "6px 12px", borderRadius: 8, cursor: "pointer" }}><ArrowLeft size={16} /> Exit</button>
               </div>
-              <div style={{ background: "rgba(34,197,94,0.1)", border: "1px solid #86efac", borderRadius: 12, padding: 16, marginBottom: 24, display: "flex", alignItems: "flex-start", gap: 12 }}>
-                <Trophy size={28} color="#16a34a" style={{ flexShrink: 0 }} />
-                <div>
-                  <h3 style={{ color: "#15803d", margin: 0, fontSize: 16 }}>{calculateHealthScore(compareItem.risks) >= calculateHealthScore(result.risks) ? "Product A (First Item)" : "Product B (Second Item)"} looks healthier.</h3>
-                  <p style={{ color: "#166534", margin: "8px 0 0", fontSize: 14, fontStyle: "italic" }}>"{generateComparisonInsight(compareItem, result)}"</p>
+              <div style={{ background: "rgba(34,197,94,0.1)", border: "1px solid #86efac", borderRadius: 12, padding: 16, marginBottom: 24 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                  <Trophy size={28} color="#16a34a" style={{ flexShrink: 0 }} />
+                  <div>
+                    <h3 style={{ color: "#15803d", margin: 0, fontSize: 16 }}>{calculateHealthScore(compareItem.risks) >= calculateHealthScore(result.risks) ? "Product A (First Item)" : "Product B (Second Item)"} looks healthier.</h3>
+                    <p style={{ color: "#166534", margin: "8px 0 0", fontSize: 14, fontStyle: "italic" }}>"{generateComparisonInsight(compareItem, result)}"</p>
+                  </div>
                 </div>
+                {bestFor.tags.length > 0 && (
+                  <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#16a34a", display: "flex", alignItems: "center" }}>{bestFor.winner} is best for:</span>
+                    {bestFor.tags.map(tag => (<span key={tag} style={{ background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: 10, fontSize: 10, fontWeight: 600 }}>{tag}</span>))}
+                  </div>
+                )}
               </div>
 
-              {/* --- UPDATED: CLEARER KEY DIFFERENCES --- */}
               <div style={{ marginBottom: 24 }}>
                 <h4 style={{ fontSize: 14, color: "var(--muted)", marginBottom: 12 }}>Key Differences</h4>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, fontSize: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, fontSize: 12, alignItems: "center" }}>
                   <div style={{ fontWeight: 600, color: "var(--muted)" }}>Feature</div>
                   <div style={{ fontWeight: 600, textAlign: "center" }}>Product A</div>
                   <div style={{ fontWeight: 600, textAlign: "center" }}>Product B</div>
-
-                  {/* High Sugar Row */}
                   <div>High Sugar</div>
-                  <div style={{ textAlign: "center" }}>
-                    <StatusBadge type="bad" detected={compareItem.risks.some(r => r.title.toLowerCase().includes("sugar") || r.description.toLowerCase().includes("sugar"))} />
-                  </div>
-                  <div style={{ textAlign: "center" }}>
-                    <StatusBadge type="bad" detected={result.risks.some(r => r.title.toLowerCase().includes("sugar") || r.description.toLowerCase().includes("sugar"))} />
-                  </div>
-
-                  {/* Additives Row */}
+                  <div style={{ textAlign: "center" }}><StatusBadge type="bad" detected={compareItem.risks.some(r => r.title.toLowerCase().includes("sugar"))} /></div>
+                  <div style={{ textAlign: "center" }}><StatusBadge type="bad" detected={result.risks.some(r => r.title.toLowerCase().includes("sugar"))} /></div>
                   <div>Additives</div>
-                  <div style={{ textAlign: "center" }}>
-                    <StatusBadge type="bad" detected={compareItem.risks.some(r => r.description.toLowerCase().includes("additive") || r.title.toLowerCase().includes("artificial"))} />
-                  </div>
-                  <div style={{ textAlign: "center" }}>
-                    <StatusBadge type="bad" detected={result.risks.some(r => r.description.toLowerCase().includes("additive") || r.title.toLowerCase().includes("artificial"))} />
-                  </div>
-
-                  {/* Processing Row (Simulated for Demo) */}
-                  <div>Processing</div>
-                  <div style={{ textAlign: "center" }}>
-                    <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                      {calculateHealthScore(compareItem.risks) < 50 ? "High" : "Low"}
-                    </span>
-                  </div>
-                  <div style={{ textAlign: "center" }}>
-                    <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                      {calculateHealthScore(result.risks) < 50 ? "High" : "Low"}
-                    </span>
-                  </div>
+                  <div style={{ textAlign: "center" }}><StatusBadge type="bad" detected={compareItem.risks.some(r => r.description.toLowerCase().includes("additive"))} /></div>
+                  <div style={{ textAlign: "center" }}><StatusBadge type="bad" detected={result.risks.some(r => r.description.toLowerCase().includes("additive"))} /></div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}><List size={12} /> Complexity</div>
+                  <div style={{ textAlign: "center" }}>{compareItem._rawLength ? (compareItem._rawLength > 15 ? "High" : "Low") : "-"}</div>
+                  <div style={{ textAlign: "center" }}>{result._rawLength ? (result._rawLength > 15 ? "High" : "Low") : "-"}</div>
                 </div>
               </div>
 
@@ -589,6 +662,10 @@ export default function Page() {
             <>
               <div className="section-title"><BarChart3 size={22} /><h2>Overview</h2></div>
               <p style={{ marginBottom: 24 }}>{result.intent}</p>
+              
+              {/* --- NEW: INGREDIENT X-RAY --- */}
+              {result.breakdown && <IngredientXRay breakdown={result.breakdown} />}
+
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20, marginBottom: 30 }}>
                 <div className="card" style={{ padding: 20 }}><RiskAnalysisChart risks={result.risks} /></div>
                 <div className="card" style={{ padding: 20, display: "flex", alignItems: "center", justifyContent: "center" }}><HealthScoreGauge risks={result.risks} /></div>
