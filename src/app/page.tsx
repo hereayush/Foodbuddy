@@ -26,6 +26,9 @@ import {
   MicOff,
   Volume2,
   Share2,
+  Trophy,
+  ArrowLeft,
+  Split, // Used for the Compare Button
 } from "lucide-react";
 // --- Recharts imports ---
 import {
@@ -65,7 +68,7 @@ type HistoryItem = {
   context?: string;
 };
 
-/* --------- SEVERITY HELPER (UI ONLY) --------- */
+/* --------- HELPERS --------- */
 function getSeverity(description: string) {
   const text = description.toLowerCase();
   if (
@@ -84,6 +87,17 @@ function getSeverity(description: string) {
     return "medium";
 
   return "low";
+}
+
+function calculateHealthScore(risks: any[]) {
+  let score = 100;
+  risks.forEach((r) => {
+    const severity = getSeverity(r.description);
+    if (severity === "high") score -= 20;
+    else if (severity === "medium") score -= 10;
+    else score -= 5;
+  });
+  return Math.max(0, Math.min(100, score));
 }
 
 /* --------- 🔒 FRONTEND INPUT VALIDATION --------- */
@@ -241,34 +255,27 @@ const RiskAnalysisChart = ({ risks }: { risks: { description: string }[] }) => {
   );
 };
 
-const HealthScoreGauge = ({ risks }: { risks: { description: string }[] }) => {
-  let score = 100;
-  risks.forEach((r) => {
-    const severity = getSeverity(r.description);
-    if (severity === "high") score -= 20;
-    else if (severity === "medium") score -= 10;
-    else score -= 5;
-  });
-  score = Math.max(0, Math.min(100, score));
+const HealthScoreGauge = ({ risks, small = false }: { risks: { description: string }[], small?: boolean }) => {
+  const score = calculateHealthScore(risks);
   let color = "#22c55e";
   if (score < 50) color = "#ef4444";
   else if (score < 80) color = "#f59e0b";
   const data = [{ name: "Score", value: score, fill: color }, { name: "Remaining", value: 100 - score, fill: "var(--border)" }];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 180, marginTop: 10 }}>
-      <div style={{ position: "relative", width: 200, height: 100 }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: small ? 120 : 180, marginTop: 10 }}>
+      <div style={{ position: "relative", width: small ? 140 : 200, height: small ? 70 : 100 }}>
         <ResponsiveContainer width="100%" height="200%">
           <PieChart>
-            <Pie data={data} cx="50%" cy="50%" startAngle={180} endAngle={0} innerRadius={60} outerRadius={80} dataKey="value" stroke="none">
+            <Pie data={data} cx="50%" cy="50%" startAngle={180} endAngle={0} innerRadius={small ? 40 : 60} outerRadius={small ? 55 : 80} dataKey="value" stroke="none">
               <Cell fill={data[0].fill} />
               <Cell fill={data[1].fill} />
             </Pie>
           </PieChart>
         </ResponsiveContainer>
         <div style={{ position: "absolute", top: "75%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center", width: "100%" }}>
-          <div style={{ fontSize: 32, fontWeight: 800, color: "var(--text)", lineHeight: 1 }}>{score}</div>
-          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Health Score</div>
+          <div style={{ fontSize: small ? 24 : 32, fontWeight: 800, color: "var(--text)", lineHeight: 1 }}>{score}</div>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Score</div>
         </div>
       </div>
     </div>
@@ -352,10 +359,13 @@ export default function Page() {
   const [scanningStatus, setScanningStatus] = useState("Initializing...");
   const [isListening, setIsListening] = useState(false);
   
-  // --- NEW: CHAT STATE ---
+  // --- CHAT STATE ---
   const [question, setQuestion] = useState("");
   const [chatResponse, setChatResponse] = useState<string | null>(null);
   const [isChatLoading, setIsChatLoading] = useState(false);
+
+  // --- COMPARE MODE STATE ---
+  const [compareItem, setCompareItem] = useState<AnalysisResponse | null>(null);
   
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -382,8 +392,14 @@ export default function Page() {
     localStorage.setItem("foodbuddy-history", JSON.stringify(updated));
   };
 
-  const handleAnalyze = async (textOverride?: string) => {
-    setLoading(true); setError(null); setResult(null); setChatResponse(null); // Reset chat on new analysis
+  const handleAnalyze = async (textOverride?: string, isComparing = false) => {
+    setLoading(true); setError(null); 
+    // IMPORTANT: If we are starting a comparison, we DON'T clear the result yet
+    if (!isComparing) {
+      setResult(null); 
+      setChatResponse(null);
+    }
+
     const textToAnalyze = textOverride || ingredients;
     if (!looksLikeIngredientInput(textToAnalyze)) {
       setError("FoodBuddy analyzes food ingredients only. Please ensure the scan is clear or enter a valid list.");
@@ -398,16 +414,41 @@ export default function Page() {
       if (!res.ok) throw new Error("Analysis failed");
       let data: AnalysisResponse = await res.json();
       data = mockEnhanceData(data, context, textToAnalyze);
+      
       setResult(data);
       if (data.intent !== "Invalid input") saveToHistory(textToAnalyze, data, context);
     } catch (err: any) { setError(err.message); } finally { setLoading(false); }
+  };
+
+  // Wrapper for the Analyze button to handle Compare Mode triggering
+  const handleAnalyzeClick = () => {
+    if (compareItem) {
+      // If we are already in compare mode, analyze normally (which will fill 'result' slot B)
+      handleAnalyze();
+    } else {
+      // Normal analysis
+      handleAnalyze();
+    }
+  };
+
+  // Trigger Compare Mode FROM INPUT BOX
+  const handleTriggerCompare = () => {
+    if (!result) return;
+    setCompareItem(result); // Save current result as A
+    setResult(null); // Clear result slot B
+    setIngredients(""); // Clear text for new input
+    // User remains in input section, ready to type Item B
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) { setError("Invalid file type."); return; }
-    setError(null); setResult(null); setIsScanning(true); setScanningStatus("Preprocessing...");
+    setError(null); 
+    // Don't clear result if we are in middle of compare flow (unless we want to replace it)
+    if (!compareItem) setResult(null);
+    
+    setIsScanning(true); setScanningStatus("Preprocessing...");
     try {
       if (file.name.toLowerCase().includes("invalid")) throw new Error("⚠️ Could not detect food ingredients.");
       if (file.name.toLowerCase().includes("random")) {
@@ -452,13 +493,16 @@ export default function Page() {
     window.speechSynthesis.speak(utterance);
   };
 
-  // --- NEW: CHAT LOGIC ---
+  const cancelComparison = () => {
+    setCompareItem(null);
+    setResult(null);
+    setIngredients("");
+  };
+
   const handleAskQuestion = () => {
     if (!question.trim()) return;
     setIsChatLoading(true);
     setChatResponse(null);
-
-    // Simulate AI thinking
     setTimeout(() => {
       setIsChatLoading(false);
       const q = question.toLowerCase();
@@ -487,41 +531,62 @@ export default function Page() {
         <span style={{ display: "inline-block", marginTop: 14, padding: "6px 14px", borderRadius: 999, background: "rgba(34,197,94,0.15)", color: "var(--primary)", fontSize: 12, fontWeight: 600 }}>AI-Native Ingredient Intelligence</span>
       </header>
 
+      {/* --- COMPARISON BANNER --- */}
+      {compareItem && !result && (
+        <section className="card reveal" style={{ marginBottom: 20, background: "rgba(59,130,246,0.1)", border: "1px solid #93c5fd" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <h3 style={{ color: "#1e3a8a", display: "flex", alignItems: "center", gap: 8 }}><Split size={20} /> Comparison Mode Active</h3>
+              <p style={{ fontSize: 14, color: "#1e40af" }}>You are comparing against the previous item. <strong>Scan or Enter Item B now.</strong></p>
+            </div>
+            <button onClick={cancelComparison} style={{ background: "white", color: "#ef4444", border: "1px solid #fca5a5", padding: "6px 12px", borderRadius: 8, cursor: "pointer", fontSize: 12 }}>Cancel</button>
+          </div>
+        </section>
+      )}
+
+      {/* --- INPUT SECTION --- */}
       <section className="card reveal" style={{ marginBottom: 36, position: 'relative' }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
-          <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}><FlaskConical size={20} /> Ingredient Input</h2>
-          
+          <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}><FlaskConical size={20} /> {compareItem ? "Input Item B" : "Ingredient Input"}</h2>
           <input type="file" accept="image/*" capture="environment" ref={cameraInputRef} style={{ display: "none" }} onChange={handleFileUpload} />
           <input type="file" accept="image/*" ref={galleryInputRef} style={{ display: "none" }} onChange={handleFileUpload} />
-          
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button onClick={() => cameraInputRef.current?.click()} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "6px 12px", borderRadius: 8, background: "var(--card)", border: "1px solid var(--primary)", color: "var(--primary)", cursor: "pointer" }}><Camera size={16} /> Scan</button>
             <button onClick={() => galleryInputRef.current?.click()} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "6px 12px", borderRadius: 8, background: "var(--card)", border: "1px solid var(--muted)", color: "var(--text)", cursor: "pointer" }}><Upload size={16} /> Upload</button>
             <button onClick={toggleListening} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "6px 12px", borderRadius: 8, background: isListening ? "#fecaca" : "var(--card)", border: isListening ? "1px solid #ef4444" : "1px solid var(--muted)", color: isListening ? "#dc2626" : "var(--text)", cursor: "pointer", transition: "all 0.2s" }}>{isListening ? <MicOff size={16} className="animate-pulse" /> : <Mic size={16} />}{isListening ? "Listening..." : "Voice"}</button>
           </div>
         </div>
-
         <div style={{ position: "relative" }}>
-          <textarea rows={4} placeholder="Type ingredients, scan a label, or use voice..." style={{ width: "100%", marginTop: 14, opacity: isScanning ? 0.5 : 1 }} value={ingredients} onChange={(e) => setIngredients(e.target.value)} disabled={isScanning} />
-          {isScanning && (
-            <div style={{ position: "absolute", inset: 0, marginTop: 14, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.8)", backdropFilter: "blur(2px)", borderRadius: 12, color: "var(--primary)", fontWeight: 600 }}>
-              <Loader2 className="spin" size={32} style={{ marginBottom: 8 }} />{scanningStatus}
-            </div>
-          )}
+          <textarea rows={4} placeholder={compareItem ? "Enter ingredients for the second item..." : "Type ingredients, scan a label, or use voice..."} style={{ width: "100%", marginTop: 14, opacity: isScanning ? 0.5 : 1 }} value={ingredients} onChange={(e) => setIngredients(e.target.value)} disabled={isScanning} />
+          {isScanning && <div style={{ position: "absolute", inset: 0, marginTop: 14, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.8)", backdropFilter: "blur(2px)", borderRadius: 12, color: "var(--primary)", fontWeight: 600 }}><Loader2 className="spin" size={32} style={{ marginBottom: 8 }} />{scanningStatus}</div>}
         </div>
-
         <div style={{ marginTop: 16 }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)" }}>ANALYZE AS:</span>
           <ContextSelector selected={context} onSelect={setContext} />
         </div>
+        <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <button className="primary" onClick={handleAnalyzeClick} disabled={loading || isScanning || !ingredients.trim()}>{compareItem ? "Compare Items" : "Analyze Ingredients"}</button>
+          
+          {/* --- NEW: COMPARE BUTTON IN INPUT (Visible when Result exists) --- */}
+          {result && !compareItem && result.intent !== "Invalid input" && (
+            <button 
+              onClick={handleTriggerCompare}
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "10px 20px", borderRadius: 8, fontWeight: 600,
+                background: "var(--card)", border: "2px solid #3b82f6", color: "#2563eb",
+                cursor: "pointer"
+              }}
+            >
+              <Split size={18} /> Compare with this
+            </button>
+          )}
 
-        <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 14 }}>
-          <button className="primary" onClick={() => handleAnalyze()} disabled={loading || isScanning || !ingredients.trim()}>Analyze Ingredients</button>
           {loading && <div className="loading" aria-live="polite">Analyzing <span className="dot" /><span className="dot" /><span className="dot" /></div>}
         </div>
       </section>
 
-      {history.length > 0 && (
+      {history.length > 0 && !result && !compareItem && (
         <section className="card reveal" style={{ marginBottom: 36 }}>
           <div className="section-title"><History size={22} /><h2>Recent Analyses</h2></div>
           {history.map((item) => (
@@ -539,16 +604,51 @@ export default function Page() {
 
       {error && <p style={{ color: "red" }}>{error}</p>}
 
+      {/* ================= RESULTS / COMPARISON VIEW ================= */}
       {result && (
         <section ref={resultRef} className="fade-in">
           {result.intent === "Invalid input" ? (
             <div className="card" style={{ border: "1px solid #fca5a5", background: "#fef2f2", padding: "24px", textAlign: "center" }}>
               <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}><XCircle size={48} color="#dc2626" /></div>
               <h2 style={{ color: "#b91c1c", marginBottom: 8 }}>Non-Food Input Detected</h2>
-              <p style={{ color: "#7f1d1d", fontSize: 15, lineHeight: 1.6 }}>FoodBuddy is designed to analyze <strong>food ingredients only</strong>. The text you entered (or scanned) appears to be conversational or unrelated to food.</p>
-              <p style={{ color: "#7f1d1d", fontSize: 14, marginTop: 12, fontStyle: "italic" }}>" {result.summary} "</p>
+              <p style={{ color: "#7f1d1d", fontSize: 15, lineHeight: 1.6 }}>FoodBuddy is designed to analyze <strong>food ingredients only</strong>.</p>
+            </div>
+          ) : compareItem ? (
+            /* --- COMPARISON MODE UI --- */
+            <div className="card" style={{ padding: "24px", border: "2px solid #3b82f6" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                <h2 style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 22 }}><Split size={24} /> Comparison Result</h2>
+                <button onClick={cancelComparison} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, background: "var(--card)", border: "1px solid var(--border)", padding: "6px 12px", borderRadius: 8, cursor: "pointer" }}><ArrowLeft size={16} /> Exit</button>
+              </div>
+
+              {/* WINNER BANNER */}
+              <div style={{ background: "rgba(34,197,94,0.1)", border: "1px solid #86efac", borderRadius: 12, padding: 16, marginBottom: 24, display: "flex", alignItems: "center", gap: 12 }}>
+                <Trophy size={28} color="#16a34a" />
+                <div>
+                  <h3 style={{ color: "#15803d", margin: 0 }}>
+                    {calculateHealthScore(compareItem.risks) >= calculateHealthScore(result.risks) ? "Product A (First Item)" : "Product B (Second Item)"} looks healthier.
+                  </h3>
+                  <p style={{ color: "#166534", margin: "4px 0 0", fontSize: 14 }}>Based on fewer detected risks and additives.</p>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                {/* ITEM A */}
+                <div style={{ padding: 16, background: "var(--background)", borderRadius: 12, textAlign: "center" }}>
+                  <h4 style={{ color: "var(--muted)", marginBottom: 8 }}>Product A</h4>
+                  <HealthScoreGauge risks={compareItem.risks} small />
+                  <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 8 }}>{compareItem.risks.length} Risks Detected</p>
+                </div>
+                {/* ITEM B */}
+                <div style={{ padding: 16, background: "var(--background)", borderRadius: 12, textAlign: "center" }}>
+                  <h4 style={{ color: "var(--muted)", marginBottom: 8 }}>Product B</h4>
+                  <HealthScoreGauge risks={result.risks} small />
+                  <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 8 }}>{result.risks.length} Risks Detected</p>
+                </div>
+              </div>
             </div>
           ) : (
+            /* --- SINGLE ITEM VIEW --- */
             <>
               <div className="section-title"><BarChart3 size={22} /><h2>Overview</h2></div>
               <p style={{ marginBottom: 24 }}>{result.intent}</p>
@@ -564,80 +664,23 @@ export default function Page() {
               <div className="section-title"><BarChart3 size={22} /><h2>Summary</h2></div>
               <p>{result.summary}</p>
               
+              {/* ACTION BUTTONS */}
               <div style={{ display: "flex", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
                 <button className="primary" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8 }} onClick={() => { const text = `Intent: ${result.intent}\nSummary: ${result.summary}`; navigator.clipboard.writeText(text); alert("Analysis copied to clipboard"); }}><Clipboard size={16} /> Copy</button>
                 <button onClick={readSummary} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, cursor: "pointer", padding: "10px" }}><Volume2 size={16} /> Listen</button>
-                <button onClick={() => { if (navigator.share) { navigator.share({ title: 'FoodBuddy Analysis', text: result.summary }); } else { alert("Sharing not supported on this device/browser."); } }} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, cursor: "pointer", padding: "10px" }}><Share2 size={16} /> Share</button>
+                <button onClick={() => { if (navigator.share) { navigator.share({ title: 'FoodBuddy Analysis', text: result.summary }); } else { alert("Sharing not supported."); } }} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, cursor: "pointer", padding: "10px" }}><Share2 size={16} /> Share</button>
               </div>
 
-              {/* --- ASK FOLLOW-UP SECTION (NEW) --- */}
+              {/* ASK FOLLOW-UP */}
               <div className="card reveal" style={{ marginTop: 24, border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)", padding: "16px" }}>
-                <h3 style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 16 }}>
-                  <Sparkles size={18} fill="var(--primary)" color="var(--primary)" /> 
-                  Have a specific question?
-                </h3>
-                
+                <h3 style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 16 }}><Sparkles size={18} fill="var(--primary)" color="var(--primary)" /> Have a specific question?</h3>
                 <div style={{ display: "flex", gap: 10 }}>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. 'Is this safe for diabetics?'"
-                    value={question}
-                    onChange={(e) => setQuestion(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAskQuestion()}
-                    style={{ 
-                      flex: 1, padding: "10px 14px", borderRadius: 8, 
-                      border: "1px solid var(--border)", background: "var(--background)",
-                      color: "var(--text)", minWidth: 0
-                    }}
-                  />
-                  <button 
-                    onClick={handleAskQuestion}
-                    disabled={isChatLoading || !question.trim()}
-                    style={{
-                      padding: "0 20px", borderRadius: 8, fontWeight: 600,
-                      background: "var(--primary)", color: "white", border: "none",
-                      cursor: "pointer", opacity: isChatLoading ? 0.7 : 1,
-                      display: "flex", alignItems: "center", justifyContent: "center"
-                    }}
-                  >
-                    {isChatLoading ? <Loader2 className="spin" size={18} /> : "Ask"}
-                  </button>
+                  <input type="text" placeholder="e.g. 'Is this safe for diabetics?'" value={question} onChange={(e) => setQuestion(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAskQuestion()} style={{ flex: 1, padding: "10px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--background)", color: "var(--text)", minWidth: 0 }} />
+                  <button onClick={handleAskQuestion} disabled={isChatLoading || !question.trim()} style={{ padding: "0 20px", borderRadius: 8, fontWeight: 600, background: "var(--primary)", color: "white", border: "none", cursor: "pointer", opacity: isChatLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center" }}>{isChatLoading ? <Loader2 className="spin" size={18} /> : "Ask"}</button>
                 </div>
-
-                {!chatResponse && (
-                  <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                    {["Is this vegan?", "Safe for kids?", "Any allergens?", "Keto friendly?"].map(q => (
-                      <button 
-                        key={q}
-                        onClick={() => { setQuestion(q); setTimeout(handleAskQuestion, 100); }} 
-                        style={{
-                          fontSize: 11, padding: "4px 10px", borderRadius: 20,
-                          border: "1px solid var(--border)", background: "var(--card)",
-                          color: "var(--muted)", cursor: "pointer"
-                        }}
-                      >
-                        {q}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {chatResponse && (
-                  <div className="fade-in" style={{ marginTop: 16, display: "flex", gap: 12 }}>
-                    <div style={{ 
-                      minWidth: 32, height: 32, borderRadius: "50%", background: "var(--primary)", 
-                      display: "flex", alignItems: "center", justifyContent: "center", color: "white",
-                      fontSize: 12, fontWeight: "bold", flexShrink: 0
-                    }}>
-                      AI
-                    </div>
-                    <div style={{ background: "var(--card)", padding: 12, borderRadius: "0 12px 12px 12px", border: "1px solid var(--border)" }}>
-                      <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5 }}>{chatResponse}</p>
-                    </div>
-                  </div>
-                )}
+                {!chatResponse && <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>{["Is this vegan?", "Safe for kids?", "Any allergens?", "Keto friendly?"].map(q => (<button key={q} onClick={() => { setQuestion(q); setTimeout(handleAskQuestion, 100); }} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 20, border: "1px solid var(--border)", background: "var(--card)", color: "var(--muted)", cursor: "pointer" }}>{q}</button>))}</div>}
+                {chatResponse && <div className="fade-in" style={{ marginTop: 16, display: "flex", gap: 12 }}><div style={{ minWidth: 32, height: 32, borderRadius: "50%", background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: 12, fontWeight: "bold", flexShrink: 0 }}>AI</div><div style={{ background: "var(--card)", padding: 12, borderRadius: "0 12px 12px 12px", border: "1px solid var(--border)" }}><p style={{ margin: 0, fontSize: 14, lineHeight: 1.5 }}>{chatResponse}</p></div></div>}
               </div>
-
               <p style={{ marginTop: 22, fontStyle: "italic", color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}><Info size={16} /> {result.disclaimer}</p>
             </>
           )}
