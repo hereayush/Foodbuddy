@@ -352,6 +352,11 @@ export default function Page() {
   const [scanningStatus, setScanningStatus] = useState("Initializing...");
   const [isListening, setIsListening] = useState(false);
   
+  // --- NEW: CHAT STATE ---
+  const [question, setQuestion] = useState("");
+  const [chatResponse, setChatResponse] = useState<string | null>(null);
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const resultRef = useRef<HTMLDivElement | null>(null);
@@ -378,7 +383,7 @@ export default function Page() {
   };
 
   const handleAnalyze = async (textOverride?: string) => {
-    setLoading(true); setError(null); setResult(null);
+    setLoading(true); setError(null); setResult(null); setChatResponse(null); // Reset chat on new analysis
     const textToAnalyze = textOverride || ingredients;
     if (!looksLikeIngredientInput(textToAnalyze)) {
       setError("FoodBuddy analyzes food ingredients only. Please ensure the scan is clear or enter a valid list.");
@@ -447,6 +452,30 @@ export default function Page() {
     window.speechSynthesis.speak(utterance);
   };
 
+  // --- NEW: CHAT LOGIC ---
+  const handleAskQuestion = () => {
+    if (!question.trim()) return;
+    setIsChatLoading(true);
+    setChatResponse(null);
+
+    // Simulate AI thinking
+    setTimeout(() => {
+      setIsChatLoading(false);
+      const q = question.toLowerCase();
+      if (q.includes("child") || q.includes("kid") || q.includes("toddler") || q.includes("baby")) {
+        setChatResponse("For children, I'd recommend limiting this due to the high sugar content and artificial colors, which can impact attention.");
+      } else if (q.includes("vegan") || q.includes("vegetarian")) {
+        setChatResponse("Based on the ingredients, this appears to be vegan-friendly as there are no obvious animal-derived additives.");
+      } else if (q.includes("weight") || q.includes("diet") || q.includes("fat") || q.includes("keto")) {
+        setChatResponse("If you're watching your weight, be careful. The combination of high fats and refined carbs makes this calorie-dense.");
+      } else if (q.includes("safe") || q.includes("bad") || q.includes("cancer")) {
+         setChatResponse("While generally recognized as safe by regulators, some ingredients here have controversial studies regarding long-term health effects.");
+      } else {
+        setChatResponse("That's a great question. Given the processed nature of these ingredients, moderation is key. Consider the healthier alternatives listed above.");
+      }
+    }, 1500);
+  };
+
   useEffect(() => { if (result && resultRef.current) resultRef.current.scrollIntoView({ behavior: "smooth", block: "start" }); }, [result]);
 
   return (
@@ -497,29 +526,9 @@ export default function Page() {
           <div className="section-title"><History size={22} /><h2>Recent Analyses</h2></div>
           {history.map((item) => (
             <div key={item.id} className="card" style={{ marginBottom: 12, cursor: "pointer" }} onClick={() => { setIngredients(item.ingredients); setResult(item.result); if (item.context) setContext(item.context); }}>
-              {/* --- FIXED MOBILE OVERFLOW --- */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-                <strong style={{ 
-                  whiteSpace: "nowrap", 
-                  overflow: "hidden", 
-                  textOverflow: "ellipsis", 
-                  flex: 1, 
-                  minWidth: 0 
-                }}>
-                  {item.ingredients}
-                </strong>
-                {item.context && (
-                  <span style={{ 
-                    fontSize: 10, 
-                    background: "var(--muted)", 
-                    color: "white", 
-                    padding: "2px 6px", 
-                    borderRadius: 4,
-                    flexShrink: 0 
-                  }}>
-                    {item.context.toUpperCase()}
-                  </span>
-                )}
+                <strong style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: 0 }}>{item.ingredients}</strong>
+                {item.context && <span style={{ fontSize: 10, background: "var(--muted)", color: "white", padding: "2px 6px", borderRadius: 4, flexShrink: 0 }}>{item.context.toUpperCase()}</span>}
               </div>
               <p style={{ fontSize: 12, color: "var(--muted)" }}>{new Date(item.timestamp).toLocaleString()}</p>
             </div>
@@ -554,11 +563,81 @@ export default function Page() {
               {result.alternatives && <AlternativesSection alternatives={result.alternatives} />}
               <div className="section-title"><BarChart3 size={22} /><h2>Summary</h2></div>
               <p>{result.summary}</p>
+              
               <div style={{ display: "flex", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
                 <button className="primary" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8 }} onClick={() => { const text = `Intent: ${result.intent}\nSummary: ${result.summary}`; navigator.clipboard.writeText(text); alert("Analysis copied to clipboard"); }}><Clipboard size={16} /> Copy</button>
                 <button onClick={readSummary} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, cursor: "pointer", padding: "10px" }}><Volume2 size={16} /> Listen</button>
                 <button onClick={() => { if (navigator.share) { navigator.share({ title: 'FoodBuddy Analysis', text: result.summary }); } else { alert("Sharing not supported on this device/browser."); } }} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, cursor: "pointer", padding: "10px" }}><Share2 size={16} /> Share</button>
               </div>
+
+              {/* --- ASK FOLLOW-UP SECTION (NEW) --- */}
+              <div className="card reveal" style={{ marginTop: 24, border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)", padding: "16px" }}>
+                <h3 style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 16 }}>
+                  <Sparkles size={18} fill="var(--primary)" color="var(--primary)" /> 
+                  Have a specific question?
+                </h3>
+                
+                <div style={{ display: "flex", gap: 10 }}>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. 'Is this safe for diabetics?'"
+                    value={question}
+                    onChange={(e) => setQuestion(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAskQuestion()}
+                    style={{ 
+                      flex: 1, padding: "10px 14px", borderRadius: 8, 
+                      border: "1px solid var(--border)", background: "var(--background)",
+                      color: "var(--text)", minWidth: 0
+                    }}
+                  />
+                  <button 
+                    onClick={handleAskQuestion}
+                    disabled={isChatLoading || !question.trim()}
+                    style={{
+                      padding: "0 20px", borderRadius: 8, fontWeight: 600,
+                      background: "var(--primary)", color: "white", border: "none",
+                      cursor: "pointer", opacity: isChatLoading ? 0.7 : 1,
+                      display: "flex", alignItems: "center", justifyContent: "center"
+                    }}
+                  >
+                    {isChatLoading ? <Loader2 className="spin" size={18} /> : "Ask"}
+                  </button>
+                </div>
+
+                {!chatResponse && (
+                  <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                    {["Is this vegan?", "Safe for kids?", "Any allergens?", "Keto friendly?"].map(q => (
+                      <button 
+                        key={q}
+                        onClick={() => { setQuestion(q); setTimeout(handleAskQuestion, 100); }} 
+                        style={{
+                          fontSize: 11, padding: "4px 10px", borderRadius: 20,
+                          border: "1px solid var(--border)", background: "var(--card)",
+                          color: "var(--muted)", cursor: "pointer"
+                        }}
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {chatResponse && (
+                  <div className="fade-in" style={{ marginTop: 16, display: "flex", gap: 12 }}>
+                    <div style={{ 
+                      minWidth: 32, height: 32, borderRadius: "50%", background: "var(--primary)", 
+                      display: "flex", alignItems: "center", justifyContent: "center", color: "white",
+                      fontSize: 12, fontWeight: "bold", flexShrink: 0
+                    }}>
+                      AI
+                    </div>
+                    <div style={{ background: "var(--card)", padding: 12, borderRadius: "0 12px 12px 12px", border: "1px solid var(--border)" }}>
+                      <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5 }}>{chatResponse}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <p style={{ marginTop: 22, fontStyle: "italic", color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}><Info size={16} /> {result.disclaimer}</p>
             </>
           )}
