@@ -34,8 +34,8 @@ import {
   AlertOctagon,
   List,
   Microscope,
-  ThumbsUp, // --- NEW
-  ThumbsDown, // --- NEW
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 import {
   BarChart,
@@ -69,7 +69,6 @@ type AnalysisResponse = {
     processed: number;
     additives: number;
   };
-  // --- NEW: SPOTLIGHT DATA ---
   spotlight?: {
     name: string;
     type: "good" | "bad" | "neutral";
@@ -173,19 +172,12 @@ function mockEnhanceData(
 
   // --- SPOTLIGHT GENERATION ---
   const spotlight = [];
-  
-  // Detect Good Stuff
   if (lowerInput.includes("whole grain") || lowerInput.includes("oats") || lowerInput.includes("wheat")) {
     spotlight.push({ name: "Whole Grains", type: "good" as const, description: "Great for fiber & digestion." });
   }
   if (lowerInput.includes("protein") || lowerInput.includes("chicken") || lowerInput.includes("egg") || lowerInput.includes("whey")) {
     spotlight.push({ name: "Protein Rich", type: "good" as const, description: "Helps build muscle & satiety." });
   }
-  if (lowerInput.includes("vitamin") || lowerInput.includes("ascorbic")) {
-    spotlight.push({ name: "Vitamins", type: "good" as const, description: "Added micronutrients for health." });
-  }
-
-  // Detect Bad Stuff
   if (lowerInput.includes("fructose") || lowerInput.includes("corn syrup")) {
     spotlight.push({ name: "Corn Syrup", type: "bad" as const, description: "Cheap sweetener, high glycemic index." });
   }
@@ -195,13 +187,10 @@ function mockEnhanceData(
   if (lowerInput.includes("palm oil")) {
     spotlight.push({ name: "Palm Oil", type: "bad" as const, description: "High in saturated fats." });
   }
-
-  // Fallback if empty
   if (spotlight.length === 0) {
     spotlight.push({ name: "Main Ingredients", type: "neutral" as const, description: "Standard composition." });
   }
-
-  enhanced.spotlight = spotlight.slice(0, 4); // Limit to 4 items
+  enhanced.spotlight = spotlight.slice(0, 4);
 
   // --- INGREDIENT CLASSIFICATION ---
   const ingredientsList = ingredientsInput.split(/,|;/).map(i => i.trim().toLowerCase());
@@ -227,7 +216,6 @@ function mockEnhanceData(
   };
   enhanced._rawLength = ingredientsList.length;
 
-  // ... (Existing Logic) ...
   if (lowerInput.includes("syrup") || lowerInput.includes("sugar") || lowerInput.includes("cane") || lowerInput.includes("soda")) {
     if (context === "kids") {
       alternatives.push({ title: "Hydration for Kids", description: "Try water infused with berries or diluted 100% fruit juice." });
@@ -237,9 +225,6 @@ function mockEnhanceData(
   }
   if (lowerInput.includes("oil") || lowerInput.includes("fried") || lowerInput.includes("chip") || lowerInput.includes("salt")) {
     alternatives.push({ title: "Crunchy Alternatives", description: "Air-popped popcorn or roasted chickpeas offer crunch with less fat." });
-  }
-  if (lowerInput.includes("caffeine") || lowerInput.includes("coffee")) {
-    alternatives.push({ title: "Sustained Energy", description: "Green tea or Matcha provides a milder boost with antioxidants." });
   }
   if (alternatives.length === 0) {
     alternatives.push({ title: "Whole Food Option", description: "Choose whole, unprocessed versions of these ingredients." });
@@ -336,10 +321,8 @@ const IngredientXRay = ({ breakdown }: { breakdown: { natural: number; processed
   );
 };
 
-/* --------- 🔦 INGREDIENT SPOTLIGHT (NEW) --------- */
 const IngredientSpotlight = ({ items }: { items: { name: string; type: "good" | "bad" | "neutral"; description: string }[] }) => {
   if (!items || items.length === 0) return null;
-
   return (
     <div style={{ marginBottom: 30 }}>
       <div className="section-title"><Microscope size={22} /><h2>Ingredient Spotlight</h2></div>
@@ -426,7 +409,6 @@ const AlternativesSection = ({ alternatives }: { alternatives: { title: string; 
   );
 };
 
-// --- HELPER FOR STATUS BADGES ---
 const StatusBadge = ({ type, detected }: { type: 'bad' | 'good', detected: boolean }) => {
   if (type === 'bad') {
     return detected 
@@ -481,6 +463,22 @@ export default function Page() {
     const updated = [item, ...history].slice(0, 5);
     setHistory(updated);
     localStorage.setItem("foodbuddy-history", JSON.stringify(updated));
+  };
+
+  const deleteHistoryItem = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = history.filter(item => item.id !== id);
+    setHistory(updated);
+    localStorage.setItem("foodbuddy-history", JSON.stringify(updated));
+  };
+
+  const backToHome = () => {
+    setResult(null);
+    setCompareItem(null);
+    setIngredients("");
+    setIngredientsB("");
+    setIsCompareMode(false);
+    setError(null);
   };
 
   const fetchAnalysis = async (text: string) => {
@@ -606,6 +604,8 @@ export default function Page() {
         </section>
       )}
 
+      {/* --- INPUT SECTION (Only show if NO result is visible) --- */}
+      {!result && (
       <section className="card reveal" style={{ marginBottom: 36, position: 'relative' }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
           <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}><FlaskConical size={20} /> {isCompareMode ? "Compare Products" : "Ingredient Input"}</h2>
@@ -637,13 +637,21 @@ export default function Page() {
           {loading && <div className="loading" aria-live="polite">Analyzing <span className="dot" /><span className="dot" /><span className="dot" /></div>}
         </div>
       </section>
+      )}
 
       {history.length > 0 && !result && !compareItem && (
         <section className="card reveal" style={{ marginBottom: 36 }}>
           <div className="section-title"><History size={22} /><h2>Recent Analyses</h2></div>
           {history.map((item) => (
             <div key={item.id} className="card" style={{ marginBottom: 12, cursor: "pointer" }} onClick={() => { setIngredients(item.ingredients); setResult(item.result); if (item.context) setContext(item.context); }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}><strong style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: 0 }}>{item.ingredients}</strong>{item.context && <span style={{ fontSize: 10, background: "var(--muted)", color: "white", padding: "2px 6px", borderRadius: 4, flexShrink: 0 }}>{item.context.toUpperCase()}</span>}</div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                <strong style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: 0 }}>{item.ingredients}</strong>
+                {item.context && <span style={{ fontSize: 10, background: "var(--muted)", color: "white", padding: "2px 6px", borderRadius: 4, flexShrink: 0 }}>{item.context.toUpperCase()}</span>}
+                {/* --- NEW: DELETE BUTTON --- */}
+                <button onClick={(e) => deleteHistoryItem(item.id, e)} style={{ border: "none", background: "none", cursor: "pointer", padding: 4, color: "var(--muted)" }}>
+                  <Trash2 size={16} />
+                </button>
+              </div>
               <p style={{ fontSize: 12, color: "var(--muted)" }}>{new Date(item.timestamp).toLocaleString()}</p>
             </div>
           ))}
@@ -653,8 +661,25 @@ export default function Page() {
 
       {error && <p style={{ color: "red" }}>{error}</p>}
 
+      {/* ================= RESULTS / COMPARISON VIEW ================= */}
       {result && (
         <section ref={resultRef} className="fade-in">
+          {/* --- NEW: BACK TO HOME BUTTON (Styled) --- */}
+          <div style={{ marginBottom: 16 }}>
+            <button 
+              onClick={backToHome} 
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 8,
+                padding: "8px 16px", borderRadius: "99px",
+                background: "var(--card)", border: "1px solid var(--border)",
+                color: "var(--text)", fontSize: 14, fontWeight: 600,
+                cursor: "pointer", boxShadow: "0 2px 4px rgba(0,0,0,0.05)"
+              }}
+            >
+              <ArrowLeft size={18} /> Back to Input
+            </button>
+          </div>
+
           {result.intent === "Invalid input" ? (
             <div className="card" style={{ border: "1px solid #fca5a5", background: "#fef2f2", padding: "24px", textAlign: "center" }}>
               <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}><XCircle size={48} color="#dc2626" /></div>
@@ -715,7 +740,6 @@ export default function Page() {
               <div className="section-title"><BarChart3 size={22} /><h2>Overview</h2></div>
               <p style={{ marginBottom: 24 }}>{result.intent}</p>
               
-              {/* --- NEW: INGREDIENT X-RAY --- */}
               {result.breakdown && <IngredientXRay breakdown={result.breakdown} />}
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20, marginBottom: 30 }}>
@@ -723,7 +747,6 @@ export default function Page() {
                 <div className="card" style={{ padding: 20, display: "flex", alignItems: "center", justifyContent: "center" }}><HealthScoreGauge risks={result.risks} /></div>
               </div>
               
-              {/* --- NEW: SPOTLIGHT --- */}
               {result.spotlight && <IngredientSpotlight items={result.spotlight} />}
 
               <div className="section-title"><AlertTriangle size={22} /><h2>Risks & Insights</h2></div>
