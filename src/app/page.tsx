@@ -33,7 +33,9 @@ import {
   CheckCircle2,
   AlertOctagon,
   List,
-  Microscope, // --- NEW ICON
+  Microscope,
+  ThumbsUp, // --- NEW
+  ThumbsDown, // --- NEW
 } from "lucide-react";
 import {
   BarChart,
@@ -62,12 +64,17 @@ type AnalysisResponse = {
   disclaimer: string;
   alternatives?: { title: string; description: string }[];
   _rawLength?: number;
-  // --- NEW: BREAKDOWN STATS ---
   breakdown?: {
     natural: number;
     processed: number;
     additives: number;
   };
+  // --- NEW: SPOTLIGHT DATA ---
+  spotlight?: {
+    name: string;
+    type: "good" | "bad" | "neutral";
+    description: string;
+  }[];
 };
 
 type HistoryItem = {
@@ -164,8 +171,39 @@ function mockEnhanceData(
   const lowerInput = ingredientsInput.toLowerCase();
   const alternatives = [];
 
-  // --- NEW: INGREDIENT CLASSIFICATION LOGIC ---
-  // Simple heuristic to guess category based on keywords
+  // --- SPOTLIGHT GENERATION ---
+  const spotlight = [];
+  
+  // Detect Good Stuff
+  if (lowerInput.includes("whole grain") || lowerInput.includes("oats") || lowerInput.includes("wheat")) {
+    spotlight.push({ name: "Whole Grains", type: "good" as const, description: "Great for fiber & digestion." });
+  }
+  if (lowerInput.includes("protein") || lowerInput.includes("chicken") || lowerInput.includes("egg") || lowerInput.includes("whey")) {
+    spotlight.push({ name: "Protein Rich", type: "good" as const, description: "Helps build muscle & satiety." });
+  }
+  if (lowerInput.includes("vitamin") || lowerInput.includes("ascorbic")) {
+    spotlight.push({ name: "Vitamins", type: "good" as const, description: "Added micronutrients for health." });
+  }
+
+  // Detect Bad Stuff
+  if (lowerInput.includes("fructose") || lowerInput.includes("corn syrup")) {
+    spotlight.push({ name: "Corn Syrup", type: "bad" as const, description: "Cheap sweetener, high glycemic index." });
+  }
+  if (lowerInput.includes("red 40") || lowerInput.includes("blue 1") || lowerInput.includes("yellow")) {
+    spotlight.push({ name: "Artificial Colors", type: "bad" as const, description: "Linked to hyperactivity in kids." });
+  }
+  if (lowerInput.includes("palm oil")) {
+    spotlight.push({ name: "Palm Oil", type: "bad" as const, description: "High in saturated fats." });
+  }
+
+  // Fallback if empty
+  if (spotlight.length === 0) {
+    spotlight.push({ name: "Main Ingredients", type: "neutral" as const, description: "Standard composition." });
+  }
+
+  enhanced.spotlight = spotlight.slice(0, 4); // Limit to 4 items
+
+  // --- INGREDIENT CLASSIFICATION ---
   const ingredientsList = ingredientsInput.split(/,|;/).map(i => i.trim().toLowerCase());
   let naturalCount = 0;
   let processedCount = 0;
@@ -177,12 +215,10 @@ function mockEnhanceData(
     } else if (ing.includes("red") || ing.includes("blue") || ing.includes("yellow") || ing.includes("acid") || ing.includes("gum") || ing.includes("benzoate") || ing.includes("sorbate") || ing.includes("glutamate")) {
       additivesCount++;
     } else {
-      // Assume unrecognized short words are natural (e.g. "milk", "eggs", "dates")
       naturalCount++;
     }
   });
   
-  // Normalize counts to percentage-ish for demo
   const total = naturalCount + processedCount + additivesCount || 1;
   enhanced.breakdown = {
     natural: Math.round((naturalCount / total) * 100),
@@ -191,7 +227,7 @@ function mockEnhanceData(
   };
   enhanced._rawLength = ingredientsList.length;
 
-  // ... (Existing Logic for Alternatives and Risks) ...
+  // ... (Existing Logic) ...
   if (lowerInput.includes("syrup") || lowerInput.includes("sugar") || lowerInput.includes("cane") || lowerInput.includes("soda")) {
     if (context === "kids") {
       alternatives.push({ title: "Hydration for Kids", description: "Try water infused with berries or diluted 100% fruit juice." });
@@ -278,38 +314,50 @@ const HealthScoreGauge = ({ risks, small = false }: { risks: { description: stri
   );
 };
 
-/* --------- 🧪 INGREDIENT X-RAY COMPONENT (NEW) --------- */
 const IngredientXRay = ({ breakdown }: { breakdown: { natural: number; processed: number; additives: number } }) => {
   if (!breakdown) return null;
-  
   return (
     <div style={{ marginTop: 20, marginBottom: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 600, color: "var(--muted)", marginBottom: 8 }}>
         <span>Ingredient Composition</span>
         <span>{breakdown.additives < 20 ? "✅ Clean Label" : "⚠️ High Processing"}</span>
       </div>
-      
-      {/* The Bar */}
       <div style={{ display: "flex", height: 12, borderRadius: 6, overflow: "hidden", width: "100%" }}>
         <div style={{ width: `${breakdown.natural}%`, background: "#22c55e" }} />
         <div style={{ width: `${breakdown.processed}%`, background: "#f59e0b" }} />
         <div style={{ width: `${breakdown.additives}%`, background: "#ef4444" }} />
       </div>
-
-      {/* The Legend */}
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 11 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <div style={{ width: 8, height: 8, borderRadius: 2, background: "#22c55e" }} />
-          <span>Natural ({breakdown.natural}%)</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <div style={{ width: 8, height: 8, borderRadius: 2, background: "#f59e0b" }} />
-          <span>Processed ({breakdown.processed}%)</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <div style={{ width: 8, height: 8, borderRadius: 2, background: "#ef4444" }} />
-          <span>Additives ({breakdown.additives}%)</span>
-        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: "#22c55e" }} /><span>Natural ({breakdown.natural}%)</span></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: "#f59e0b" }} /><span>Processed ({breakdown.processed}%)</span></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: "#ef4444" }} /><span>Additives ({breakdown.additives}%)</span></div>
+      </div>
+    </div>
+  );
+};
+
+/* --------- 🔦 INGREDIENT SPOTLIGHT (NEW) --------- */
+const IngredientSpotlight = ({ items }: { items: { name: string; type: "good" | "bad" | "neutral"; description: string }[] }) => {
+  if (!items || items.length === 0) return null;
+
+  return (
+    <div style={{ marginBottom: 30 }}>
+      <div className="section-title"><Microscope size={22} /><h2>Ingredient Spotlight</h2></div>
+      <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8 }}>
+        {items.map((item, i) => (
+          <div key={i} style={{ 
+            minWidth: 200, padding: 14, borderRadius: 12, 
+            background: item.type === "good" ? "#f0fdf4" : item.type === "bad" ? "#fef2f2" : "var(--card)", 
+            border: `1px solid ${item.type === "good" ? "#bbf7d0" : item.type === "bad" ? "#fecaca" : "var(--border)"}`,
+            flexShrink: 0 
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              {item.type === "good" ? <ThumbsUp size={16} color="#16a34a" /> : item.type === "bad" ? <ThumbsDown size={16} color="#dc2626" /> : <Info size={16} color="#6b7280" />}
+              <strong style={{ fontSize: 14, color: item.type === "good" ? "#16a34a" : item.type === "bad" ? "#dc2626" : "var(--text)" }}>{item.name}</strong>
+            </div>
+            <p style={{ fontSize: 12, color: "var(--muted)", margin: 0, lineHeight: 1.4 }}>{item.description}</p>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -623,8 +671,12 @@ export default function Page() {
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
                   <Trophy size={28} color="#16a34a" style={{ flexShrink: 0 }} />
                   <div>
-                    <h3 style={{ color: "#15803d", margin: 0, fontSize: 16 }}>{calculateHealthScore(compareItem.risks) >= calculateHealthScore(result.risks) ? "Product A (First Item)" : "Product B (Second Item)"} looks healthier.</h3>
-                    <p style={{ color: "#166534", margin: "8px 0 0", fontSize: 14, fontStyle: "italic" }}>"{generateComparisonInsight(compareItem, result)}"</p>
+                    <h3 style={{ color: "#15803d", margin: 0, fontSize: 16 }}>
+                      {calculateHealthScore(compareItem.risks) >= calculateHealthScore(result.risks) ? "Product A (First Item)" : "Product B (Second Item)"} looks healthier.
+                    </h3>
+                    <p style={{ color: "#166534", margin: "8px 0 0", fontSize: 14, fontStyle: "italic" }}>
+                      "{generateComparisonInsight(compareItem, result)}"
+                    </p>
                   </div>
                 </div>
                 {bestFor.tags.length > 0 && (
@@ -670,6 +722,10 @@ export default function Page() {
                 <div className="card" style={{ padding: 20 }}><RiskAnalysisChart risks={result.risks} /></div>
                 <div className="card" style={{ padding: 20, display: "flex", alignItems: "center", justifyContent: "center" }}><HealthScoreGauge risks={result.risks} /></div>
               </div>
+              
+              {/* --- NEW: SPOTLIGHT --- */}
+              {result.spotlight && <IngredientSpotlight items={result.spotlight} />}
+
               <div className="section-title"><AlertTriangle size={22} /><h2>Risks & Insights</h2></div>
               {result.risks.map((r, i) => <ExpandableRiskCard key={i} risk={r} />)}
               <div className="section-title"><Scale size={22} /><h2>Trade-offs</h2></div>
