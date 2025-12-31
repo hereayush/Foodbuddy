@@ -20,7 +20,7 @@ import {
   Leaf,
   Camera,
   Loader2,
-  XCircle, // New Icon for Error
+  XCircle,
 } from "lucide-react";
 // --- Recharts imports ---
 import {
@@ -81,7 +81,7 @@ function getSeverity(description: string) {
   return "low";
 }
 
-/* --------- 🔒 FRONTEND INPUT VALIDATION (UPDATED) --------- */
+/* --------- 🔒 FRONTEND INPUT VALIDATION --------- */
 function looksLikeIngredientInput(input: string) {
   const bannedKeywords = [
     "chatgpt",
@@ -97,7 +97,7 @@ function looksLikeIngredientInput(input: string) {
     "who are you",
     "what is",
     "how to",
-    "how are you", // Added specific conversational triggers
+    "how are you",
     "hello",
     "hi ",
     "hey",
@@ -122,7 +122,7 @@ function mockEnhanceData(
   context: string,
   ingredientsInput: string
 ): AnalysisResponse {
-  // IF INVALID, RETURN AS IS (Don't add fake alternatives to invalid input)
+  // IF INVALID, RETURN AS IS
   if (data.intent === "Invalid input") {
     return data;
   }
@@ -762,9 +762,11 @@ export default function Page() {
             <FlaskConical size={20} /> Ingredient Input
           </h2>
           
+          {/* UPDATED INPUT with capture="environment" for mobile camera support */}
           <input
             type="file"
             accept="image/*"
+            capture="environment"
             ref={fileInputRef}
             style={{ display: "none" }}
             onChange={handleFileUpload}
