@@ -21,7 +21,11 @@ import {
   Camera,
   Loader2,
   XCircle,
-  Upload, // --- NEW: Import Upload Icon
+  Upload,
+  Mic,      // --- NEW
+  MicOff,   // --- NEW
+  Volume2,  // --- NEW
+  Share2,   // --- NEW
 } from "lucide-react";
 // --- Recharts imports ---
 import {
@@ -110,7 +114,6 @@ function looksLikeIngredientInput(input: string) {
   const text = input.toLowerCase().trim();
   
   if (text.length < 3) return false;
-  // Relaxed length check for OCR noise
   if (text.split(" ").length > 500) return false; 
   
   return !bannedKeywords.some((word) => text.includes(word));
@@ -548,6 +551,9 @@ export default function Page() {
   
   const resultRef = useRef<HTMLDivElement | null>(null);
 
+  // --- NEW: VOICE INPUT STATE ---
+  const [isListening, setIsListening] = useState(false);
+
   useEffect(() => {
     const savedTheme = localStorage.getItem("theme") as "light" | "dark" | null;
     const savedHistory = localStorage.getItem("foodbuddy-history");
@@ -690,6 +696,47 @@ export default function Page() {
     }
   };
 
+  // --- NEW: VOICE INPUT HANDLER ---
+  const toggleListening = () => {
+    if (isListening) {
+      setIsListening(false);
+      return;
+    }
+
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert("Voice input is not supported in this browser. Try Chrome or Safari.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    setIsListening(true);
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setIngredients((prev) => (prev ? prev + " " + transcript : transcript));
+      setIsListening(false);
+    };
+
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
+
+    recognition.start();
+  };
+
+  // --- NEW: READ SUMMARY HANDLER ---
+  const readSummary = () => {
+    if (!result?.summary) return;
+    const utterance = new SpeechSynthesisUtterance(result.summary);
+    window.speechSynthesis.speak(utterance);
+  };
+
   useEffect(() => {
     if (result && resultRef.current) {
       resultRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -767,16 +814,14 @@ export default function Page() {
           </h2>
           
           {/* --- HIDDEN INPUTS --- */}
-          {/* 1. Camera Input (Mobile Only) */}
           <input
             type="file"
             accept="image/*"
-            capture="environment" // Forces Camera
+            capture="environment"
             ref={cameraInputRef}
             style={{ display: "none" }}
             onChange={handleFileUpload}
           />
-          {/* 2. Gallery/File Input */}
           <input
             type="file"
             accept="image/*"
@@ -812,13 +857,29 @@ export default function Page() {
             >
               <Upload size={16} /> Upload
             </button>
+
+            {/* --- NEW: VOICE BUTTON --- */}
+            <button
+              onClick={toggleListening}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                fontSize: 12, padding: "6px 12px", borderRadius: 8,
+                background: isListening ? "#fecaca" : "var(--card)",
+                border: isListening ? "1px solid #ef4444" : "1px solid var(--muted)",
+                color: isListening ? "#dc2626" : "var(--text)",
+                cursor: "pointer", transition: "all 0.2s"
+              }}
+            >
+              {isListening ? <MicOff size={16} className="animate-pulse" /> : <Mic size={16} />}
+              {isListening ? "Listening..." : "Voice"}
+            </button>
           </div>
         </div>
 
         <div style={{ position: "relative" }}>
           <textarea
             rows={4}
-            placeholder="Type ingredients or scan a label..."
+            placeholder="Type ingredients, scan a label, or use voice..."
             style={{ width: "100%", marginTop: 14, opacity: isScanning ? 0.5 : 1 }}
             value={ingredients}
             onChange={(e) => setIngredients(e.target.value)}
@@ -932,7 +993,7 @@ export default function Page() {
       {/* ================= RESULTS ================= */}
       {result && (
         <section ref={resultRef} className="fade-in">
-          {/* --- INVALID INPUT HANDLER (Shows Error Card) --- */}
+          {/* --- INVALID INPUT HANDLER --- */}
           {result.intent === "Invalid input" ? (
             <div
               className="card"
@@ -956,7 +1017,7 @@ export default function Page() {
               </p>
             </div>
           ) : (
-            /* --- VALID INPUT (Shows Dashboard) --- */
+            /* --- VALID INPUT --- */
             <>
               <div className="section-title">
                 <BarChart3 size={22} />
@@ -1023,22 +1084,53 @@ export default function Page() {
               </div>
               <p>{result.summary}</p>
 
-              <button
-                className="primary"
-                style={{
-                  marginTop: 20,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-                onClick={() => {
-                  const text = `Intent: ${result.intent}\nSummary: ${result.summary}`;
-                  navigator.clipboard.writeText(text);
-                  alert("Analysis copied to clipboard");
-                }}
-              >
-                <Clipboard size={16} /> Copy Analysis
-              </button>
+              {/* --- ACTION BUTTONS (UPDATED) --- */}
+              <div style={{ display: "flex", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
+                <button
+                  className="primary"
+                  style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8 }}
+                  onClick={() => {
+                    const text = `Intent: ${result.intent}\nSummary: ${result.summary}`;
+                    navigator.clipboard.writeText(text);
+                    alert("Analysis copied to clipboard");
+                  }}
+                >
+                  <Clipboard size={16} /> Copy
+                </button>
+
+                {/* --- READ ALOUD BUTTON --- */}
+                <button
+                  onClick={readSummary}
+                  style={{
+                    flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8,
+                    background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, cursor: "pointer",
+                    padding: "10px"
+                  }}
+                >
+                  <Volume2 size={16} /> Listen
+                </button>
+
+                {/* --- SHARE BUTTON --- */}
+                <button
+                  onClick={() => {
+                    if (navigator.share) {
+                      navigator.share({
+                        title: 'FoodBuddy Analysis',
+                        text: result.summary,
+                      });
+                    } else {
+                      alert("Sharing not supported on this device/browser.");
+                    }
+                  }}
+                  style={{
+                    flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8,
+                    background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, cursor: "pointer",
+                    padding: "10px"
+                  }}
+                >
+                  <Share2 size={16} /> Share
+                </button>
+              </div>
 
               <p
                 style={{
