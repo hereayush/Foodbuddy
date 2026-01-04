@@ -124,7 +124,7 @@ function generateComparisonInsight(itemA: AnalysisResponse, itemB: AnalysisRespo
   const loser = scoreA >= scoreB ? "Product B" : "Product A";
   const loserRisks = scoreA >= scoreB ? itemB.risks : itemA.risks;
   const badIngredient = loserRisks.find(r => getSeverity(r.description) === "high")?.title || "more additives";
-  return `The clear winner is ${winner}. It avoids concerns like ${badIngredient.toLowerCase()} found in ${loser}, making it a safer long-term choice.`;
+  return `The clear winner is ${winner}. It avoids concerns like ${badIngredient.toLowerCase()} found in ${loser}.`;
 }
 
 function getBestForTags(itemA: AnalysisResponse, itemB: AnalysisResponse) {
@@ -141,10 +141,10 @@ function getBestForTags(itemA: AnalysisResponse, itemB: AnalysisResponse) {
 
 function getVerdict(score: number, dietary: any[]) {
   const unsafeDiet = dietary.find(d => d.status === "unsafe");
-  if (unsafeDiet) return `⚠️ Caution: This product is NOT ${unsafeDiet.name}-friendly due to ${unsafeDiet.reason}.`;
-  if (score >= 80) return "✅ Excellent Choice! This product has a clean, natural profile.";
-  if (score >= 50) return "⚖️ Moderate Choice. Contains some processed ingredients; consume in moderation.";
-  return "❌ Highly Processed. Contains multiple additives or high sugar levels. Limit consumption.";
+  if (unsafeDiet) return `Caution: Not ${unsafeDiet.name}-friendly.`;
+  if (score >= 80) return "Excellent Choice! Clean profile.";
+  if (score >= 50) return "Moderate Choice. Consume in moderation.";
+  return "Highly Processed. Limit consumption.";
 }
 
 /* --------- 🔒 FRONTEND INPUT VALIDATION --------- */
@@ -191,15 +191,33 @@ function mockEnhanceData(data: AnalysisResponse, context: string, ingredientsInp
 
   if (lowerInput.includes("sugar") || lowerInput.includes("syrup")) { if (context === "kids") alternatives.push({ title: "Diluted Juice", description: "Less sugar for kids." }); else alternatives.push({ title: "Stevia / Monk Fruit", description: "Zero calorie natural sweetener." }); }
   if (lowerInput.includes("oil") || lowerInput.includes("fried")) alternatives.push({ title: "Air-Popped Snacks", description: "Crunchy but less fat." });
-  if (alternatives.length === 0) alternatives.push({ title: "Whole Foods", description: "Choose unprocessed options." });
+  if (alternatives.length === 0) alternatives.push({ title: "Whole Food Option", description: "Choose whole, unprocessed versions of these ingredients." });
   enhanced.alternatives = alternatives;
   enhanced.risks = data.risks.map((r) => ({ ...r, confidence: Math.random() > 0.4 ? "High" : "Medium", simple_explanation: `Added for ${r.title.includes("Sugar") ? "flavor" : "preservation"}, but offers little nutrition.` }));
   return enhanced;
 }
 
-/* --------- 🧩 UI COMPONENTS --------- */
+/* --------- 🧩 UI COMPONENTS (DEFINED BEFORE PAGE) --------- */
 
-// --- 1. CONTEXT SELECTOR (Re-added here explicitly) ---
+// 1. Verdict Banner
+const VerdictBanner = ({ score, text }: { score: number, text: string }) => {
+  const isGood = score >= 50;
+  return (
+    <div style={{ 
+      background: isGood ? "linear-gradient(135deg, #22c55e, #16a34a)" : "linear-gradient(135deg, #ef4444, #dc2626)",
+      borderRadius: 16, padding: "24px", color: "white", marginBottom: 24,
+      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)"
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+        {isGood ? <CheckCircle2 size={32} /> : <AlertTriangle size={32} />}
+        <h2 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>{isGood ? "Good Choice" : "Caution"}</h2>
+      </div>
+      <p style={{ margin: 0, fontSize: 16, opacity: 0.95, fontWeight: 500 }}>{text}</p>
+    </div>
+  );
+};
+
+// 2. Context Selector (This was missing causing the crash)
 const ContextSelector = ({ selected, onSelect }: { selected: string; onSelect: (c: string) => void }) => {
   const contexts = [
     { id: "general", label: "General", icon: <ShieldCheck size={14} /> },
@@ -218,33 +236,17 @@ const ContextSelector = ({ selected, onSelect }: { selected: string; onSelect: (
   );
 };
 
-const VerdictBanner = ({ score, text }: { score: number, text: string }) => {
-  const isGood = score >= 50;
-  return (
-    <div style={{ 
-      background: isGood ? "linear-gradient(135deg, #16a34a, #15803d)" : "linear-gradient(135deg, #dc2626, #b91c1c)",
-      borderRadius: 16, padding: "24px", color: "white", marginBottom: 24,
-      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)"
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-        {isGood ? <CheckCircle2 size={32} /> : <AlertTriangle size={32} />}
-        <h2 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>{isGood ? "Good Choice" : "Caution"}</h2>
-      </div>
-      <p style={{ margin: 0, fontSize: 16, opacity: 0.9 }}>{text}</p>
-    </div>
-  );
-};
-
-const DietaryMatrix = ({ items }: { items: { name: string; status: "safe" | "unsafe" | "warning"; reason?: string }[] }) => {
+// 3. Dietary Matrix
+const DietaryMatrix = ({ items, theme }: { items: { name: string; status: "safe" | "unsafe" | "warning"; reason?: string }[], theme: string }) => {
   if (!items || items.length === 0) return null;
   return (
     <div style={{ marginBottom: 24, display: "flex", gap: 10, flexWrap: "wrap" }}>
       {items.map((item, i) => (
         <div key={i} style={{ 
           flex: "1 1 auto", padding: "8px 16px", borderRadius: 99, 
-          background: item.status === "safe" ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.1)", 
-          border: `1px solid ${item.status === "safe" ? "#22c55e" : "#ef4444"}`,
-          color: item.status === "safe" ? "#15803d" : "#991b1b",
+          background: item.status === "safe" ? (theme === 'dark' ? "rgba(34, 197, 94, 0.15)" : "#dcfce7") : (theme === 'dark' ? "rgba(239, 68, 68, 0.1)" : "#fee2e2"), 
+          border: `1px solid ${item.status === "safe" ? (theme === 'dark' ? "#22c55e" : "#86efac") : (theme === 'dark' ? "#ef4444" : "#fca5a5")}`,
+          color: item.status === "safe" ? (theme === 'dark' ? "#4ade80" : "#166534") : (theme === 'dark' ? "#f87171" : "#991b1b"),
           display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontWeight: 700, fontSize: 13
         }}>
           {item.status === "safe" ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
@@ -255,13 +257,19 @@ const DietaryMatrix = ({ items }: { items: { name: string; status: "safe" | "uns
   );
 };
 
-const IngredientXRay = ({ breakdown }: { breakdown: { natural: number; processed: number; additives: number } }) => {
+// 4. Ingredient X-Ray (Fixed Colors)
+const IngredientXRay = ({ breakdown, theme }: { breakdown: { natural: number; processed: number; additives: number }, theme: string }) => {
   if (!breakdown) return null;
-  const processedColor = "#d97706";
+  const processedColor = "#f59e0b"; // Golden/Amber for processed
+  const bgColor = theme === 'dark' ? "#1e293b" : "#f8fafc";
+  const borderColor = theme === 'dark' ? "transparent" : "#e2e8f0";
+  const textColor = theme === 'dark' ? "white" : "#334155";
+  const titleColor = theme === 'dark' ? "#94a3b8" : "#64748b";
+  
   return (
-    <div style={{ marginBottom: 24, background: "#0f172a", padding: 20, borderRadius: 16, color: "white", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)" }}>
+    <div style={{ marginBottom: 24, background: bgColor, border: `1px solid ${borderColor}`, padding: 20, borderRadius: 16, color: textColor, boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700, color: "#94a3b8" }}><FlaskConical size={18} /> INGREDIENT X-RAY</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700, color: titleColor }}><FlaskConical size={18} /> INGREDIENT X-RAY</span>
         <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: breakdown.additives < 20 ? "#22c55e" : "#ef4444", color: "white", fontWeight: 700 }}>{breakdown.additives < 20 ? "CLEAN" : "PROCESSED"}</span>
       </div>
       <div style={{ display: "flex", height: 8, borderRadius: 4, overflow: "hidden", width: "100%", marginBottom: 12 }}>
@@ -269,7 +277,7 @@ const IngredientXRay = ({ breakdown }: { breakdown: { natural: number; processed
         <div style={{ width: `${breakdown.processed}%`, background: processedColor }} />
         <div style={{ width: `${breakdown.additives}%`, background: "#f87171" }} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, textAlign: "center", fontSize: 11, color: "#cbd5e1" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, textAlign: "center", fontSize: 11, color: titleColor }}>
         <div><div style={{color:"#4ade80", fontSize:16, fontWeight:800}}>{breakdown.natural}%</div>Natural</div>
         <div><div style={{color: processedColor, fontSize:16, fontWeight:800}}>{breakdown.processed}%</div>Processed</div>
         <div><div style={{color:"#f87171", fontSize:16, fontWeight:800}}>{breakdown.additives}%</div>Additives</div>
@@ -278,20 +286,28 @@ const IngredientXRay = ({ breakdown }: { breakdown: { natural: number; processed
   );
 };
 
-const RiskAnalysisChart = ({ risks }: { risks: { description: string }[] }) => {
-  const data = [{ name: "High", count: 0, color: "#ef4444" }, { name: "Med", count: 0, color: "#d97706" }, { name: "Low", count: 0, color: "#22c55e" }];
+// 5. Charts
+const RiskAnalysisChart = ({ risks, theme }: { risks: { description: string }[], theme: string }) => {
+  const data = [{ name: "High", count: 0, color: "#ef4444" }, { name: "Med", count: 0, color: "#f59e0b" }, { name: "Low", count: 0, color: "#22c55e" }];
   risks.forEach((r) => { const s = getSeverity(r.description); if (s === "high") data[0].count++; else if (s === "medium") data[1].count++; else data[2].count++; });
+  const textColor = theme === 'dark' ? "#cbd5e1" : "#475569";
   return (
-    <div style={{ width: "100%", height: 140 }}>
-      <ResponsiveContainer><BarChart data={data}><Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={20}>{data.map((e, i) => <Cell key={i} fill={e.color} />)}</Bar></BarChart></ResponsiveContainer>
+    <div style={{ width: "100%", height: 180 }}>
+      <ResponsiveContainer><BarChart data={data} margin={{top: 10, bottom: 0}}>
+        <XAxis dataKey="name" tick={{ fill: textColor, fontSize: 12, fontWeight: 600 }} axisLine={false} tickLine={false} />
+        <Tooltip cursor={{ fill: "transparent" }} contentStyle={{ borderRadius: 8, border: "1px solid #ddd", color: "black" }} />
+        <Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={30}>{data.map((e, i) => <Cell key={i} fill={e.color} />)}</Bar>
+      </BarChart></ResponsiveContainer>
     </div>
   );
 };
 
-const HealthScoreGauge = ({ risks, small = false }: { risks: { description: string }[], small?: boolean }) => {
+const HealthScoreGauge = ({ risks, small = false, theme }: { risks: { description: string }[], small?: boolean, theme: string }) => {
   const score = calculateHealthScore(risks);
-  let color = "#22c55e"; if (score < 50) color = "#ef4444"; else if (score < 80) color = "#d97706";
-  const data = [{ name: "Score", value: score, fill: color }, { name: "Remaining", value: 100 - score, fill: "#e5e7eb" }];
+  let color = "#22c55e"; if (score < 50) color = "#ef4444"; else if (score < 80) color = "#f59e0b";
+  const trailColor = theme === 'dark' ? "#334155" : "#e5e7eb";
+  const textColor = theme === 'dark' ? "white" : "var(--text)";
+  const data = [{ name: "Score", value: score, fill: color }, { name: "Remaining", value: 100 - score, fill: trailColor }];
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 180 }}>
       <div style={{ position: "relative", width: 160, height: 80 }}>
@@ -299,7 +315,7 @@ const HealthScoreGauge = ({ risks, small = false }: { risks: { description: stri
           <PieChart><Pie data={data} cx="50%" cy="50%" startAngle={180} endAngle={0} innerRadius={60} outerRadius={80} dataKey="value" stroke="none"><Cell fill={data[0].fill} /><Cell fill={data[1].fill} /></Pie></PieChart>
         </ResponsiveContainer>
         <div style={{ position: "absolute", bottom: 0, left: "50%", transform: "translate(-50%, 0)", textAlign: "center" }}>
-          <div style={{ fontSize: 28, fontWeight: 800, color: "var(--text)", lineHeight: 1 }}>{score}</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: textColor, lineHeight: 1 }}>{score}</div>
           <div style={{ fontSize: 10, color: "var(--muted)" }}>HEALTH SCORE</div>
         </div>
       </div>
@@ -307,20 +323,23 @@ const HealthScoreGauge = ({ risks, small = false }: { risks: { description: stri
   );
 };
 
-const HealthTrendChart = ({ history }: { history: HistoryItem[] }) => {
+// 6. Health Trend
+const HealthTrendChart = ({ history, theme }: { history: HistoryItem[], theme: string }) => {
   if (!history || history.length < 2) return null;
   const data = history.map(h => ({ name: new Date(h.timestamp).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }), score: calculateHealthScore(h.result.risks) })).reverse();
+  const bgGradient = theme === 'dark' ? "linear-gradient(180deg, rgba(34,197,94,0.1) 0%, rgba(15,23,42,0) 100%)" : "linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%)";
+  const borderColor = theme === 'dark' ? "#1e293b" : "#bbf7d0";
   return (
-    <div className="card reveal" style={{ marginBottom: 24, padding: 20, background: "linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%)", border: "1px solid #bbf7d0" }}>
-      <div className="section-title"><TrendingUp size={20} color="#15803d" /><h2 style={{ color: "#15803d", fontSize: 16 }}>Your Health Journey</h2></div>
+    <div className="card reveal" style={{ marginBottom: 24, padding: 20, background: bgGradient, border: `1px solid ${borderColor}` }}>
+      <div className="section-title"><TrendingUp size={20} color={theme === 'dark' ? "#4ade80" : "#15803d"} /><h2 style={{ color: theme === 'dark' ? "#4ade80" : "#15803d", fontSize: 16 }}>Your Health Journey</h2></div>
       <div style={{ width: "100%", height: 150, marginTop: 10 }}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data}>
             <defs><linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/><stop offset="95%" stopColor="#22c55e" stopOpacity={0}/></linearGradient></defs>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.05)" />
-            <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#15803d" }} axisLine={false} tickLine={false} />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(150,150,150,0.1)" />
+            <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--muted)" }} axisLine={false} tickLine={false} />
             <YAxis hide domain={[0, 100]} />
-            <Tooltip contentStyle={{ borderRadius: 8, border: "none", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }} />
+            <Tooltip contentStyle={{ borderRadius: 8, border: "none", background: "var(--card)", color:"var(--text)", boxShadow: "0 4px 12px rgba(0,0,0,0.2)" }} />
             <Area type="monotone" dataKey="score" stroke="#22c55e" strokeWidth={2} fillOpacity={1} fill="url(#colorScore)" />
           </AreaChart>
         </ResponsiveContainer>
@@ -329,44 +348,52 @@ const HealthTrendChart = ({ history }: { history: HistoryItem[] }) => {
   );
 };
 
-const GamificationSection = ({ history }: { history: HistoryItem[] }) => {
+// 7. Gamification
+const GamificationSection = ({ history, theme }: { history: HistoryItem[], theme: string }) => {
   const count = history.length;
+  const bg = theme === 'dark' ? "linear-gradient(to right, #1e293b, #0f172a)" : "linear-gradient(to right, #f0fdf4, #ffffff)";
+  const border = theme === 'dark' ? "#334155" : "#bbf7d0";
   return (
-    <div className="card reveal" style={{ marginBottom: 24, background: "linear-gradient(to right, #f0fdf4, #ffffff)", border: "1px solid #bbf7d0", padding: 20 }}>
+    <div className="card reveal" style={{ marginBottom: 24, background: bg, border: `1px solid ${border}`, padding: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <h3 style={{ margin: 0, fontSize: 16, display: "flex", gap: 8, color: "#15803d" }}><Trophy size={20} /> Achievements</h3>
-        <span style={{ fontSize: 12, background: "#dcfce7", color: "#15803d", padding: "2px 8px", borderRadius: 99, fontWeight: 700 }}>Level {Math.floor(count / 5) + 1}</span>
+        <h3 style={{ margin: 0, fontSize: 16, display: "flex", gap: 8, color: theme==='dark'?"#4ade80":"#15803d" }}><Trophy size={20} /> Achievements</h3>
+        <span style={{ fontSize: 12, background: theme==='dark'?"rgba(34,197,94,0.2)":"#dcfce7", color: theme==='dark'?"#4ade80":"#166534", padding: "2px 8px", borderRadius: 99, fontWeight: 700 }}>Level {Math.floor(count / 5) + 1}</span>
       </div>
       <div style={{ display: "flex", gap: 12 }}>
         <div style={{ textAlign: "center", opacity: count >= 1 ? 1 : 0.5 }}>
-          <div style={{ background: count >= 1 ? "#22c55e" : "#cbd5e1", borderRadius: "50%", width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", color: "white", marginBottom: 4, marginInline: "auto" }}><Microscope size={20} /></div>
-          <span style={{ fontSize: 10, color: "#15803d", fontWeight: 600 }}>First Scan</span>
+          <div style={{ background: count >= 1 ? "#22c55e" : "var(--muted)", borderRadius: "50%", width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", color: "white", marginBottom: 4, marginInline: "auto" }}><Microscope size={20} /></div>
+          <span style={{ fontSize: 10, color: "var(--text)", fontWeight: 600 }}>First Scan</span>
         </div>
         <div style={{ textAlign: "center", opacity: count >= 5 ? 1 : 0.5 }}>
-          <div style={{ background: count >= 5 ? "#22c55e" : "#cbd5e1", borderRadius: "50%", width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", color: "white", marginBottom: 4, marginInline: "auto" }}><Activity size={20} /></div>
-          <span style={{ fontSize: 10, color: "#15803d", fontWeight: 600 }}>Explorer</span>
+          <div style={{ background: count >= 5 ? "#22c55e" : "var(--muted)", borderRadius: "50%", width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", color: "white", marginBottom: 4, marginInline: "auto" }}><Activity size={20} /></div>
+          <span style={{ fontSize: 10, color: "var(--text)", fontWeight: 600 }}>Explorer</span>
         </div>
         <div style={{ textAlign: "center", opacity: count >= 10 ? 1 : 0.5 }}>
-          <div style={{ background: count >= 10 ? "#22c55e" : "#cbd5e1", borderRadius: "50%", width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", color: "white", marginBottom: 4, marginInline: "auto" }}><ShieldCheck size={20} /></div>
-          <span style={{ fontSize: 10, color: "#15803d", fontWeight: 600 }}>Guardian</span>
+          <div style={{ background: count >= 10 ? "#22c55e" : "var(--muted)", borderRadius: "50%", width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", color: "white", marginBottom: 4, marginInline: "auto" }}><ShieldCheck size={20} /></div>
+          <span style={{ fontSize: 10, color: "var(--text)", fontWeight: 600 }}>Guardian</span>
         </div>
       </div>
     </div>
   );
 };
 
-const ShoppingListCard = ({ items, onRemove, onClear }: { items: string[], onRemove: (i: number) => void, onClear: () => void }) => {
+// 8. Shopping List
+const ShoppingListCard = ({ items, onRemove, onClear, theme }: { items: string[], onRemove: (i: number) => void, onClear: () => void, theme: string }) => {
   if (items.length === 0) return null;
+  const bg = theme === 'dark' ? "#1e293b" : "white";
+  const pillBg = theme === 'dark' ? "rgba(34,197,94,0.1)" : "#f0fdf4";
+  const pillColor = theme === 'dark' ? "#4ade80" : "#166534";
+  const borderColor = theme === 'dark' ? "#334155" : "#bbf7d0";
   return (
-    <div className="card reveal" style={{ marginBottom: 24, background: "white", border: "1px solid #bbf7d0", padding: 20, boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)" }}>
+    <div className="card reveal" style={{ marginBottom: 24, background: bg, border: `1px solid ${borderColor}`, padding: 20, boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <h3 style={{ margin: 0, color: "#166534", fontSize: 16, display: "flex", gap: 8 }}><ShoppingCart size={20} /> Shopping List</h3>
-        <button onClick={onClear} style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626" }}><Trash2 size={16} /></button>
+        <h3 style={{ margin: 0, color: "var(--primary)", fontSize: 16, display: "flex", gap: 8 }}><ShoppingCart size={20} /> Shopping List</h3>
+        <button onClick={onClear} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444" }}><Trash2 size={16} /></button>
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         {items.map((item, i) => (
-          <span key={i} style={{ background: "#f0fdf4", padding: "6px 12px", borderRadius: 8, fontSize: 13, color: "#166534", border: "1px solid #bbf7d0", display: "flex", alignItems: "center", gap: 6 }}>
-            {item} <button onClick={() => onRemove(i)} style={{ border: "none", background: "none", cursor: "pointer", color: "#15803d", display: "flex" }}><X size={14} /></button>
+          <span key={i} style={{ background: pillBg, padding: "6px 12px", borderRadius: 8, fontSize: 13, color: pillColor, border: `1px solid ${borderColor}`, display: "flex", alignItems: "center", gap: 6 }}>
+            {item} <button onClick={() => onRemove(i)} style={{ border: "none", background: "none", cursor: "pointer", color: pillColor, display: "flex" }}><X size={14} /></button>
           </span>
         ))}
       </div>
@@ -374,17 +401,17 @@ const ShoppingListCard = ({ items, onRemove, onClear }: { items: string[], onRem
   );
 };
 
+// ... (Other Standard Components)
 const ExpandableRiskCard = ({ risk }: { risk: any }) => {
   const [expanded, setExpanded] = useState(false);
   const severity = getSeverity(risk.description);
   return (
-    <div className="card" style={{ marginBottom: 12, borderLeft: severity === 'high' ? "4px solid #ef4444" : "4px solid #d97706", padding: 16 }}>
+    <div className="card" style={{ marginBottom: 12, borderLeft: severity === 'high' ? "4px solid #ef4444" : "4px solid #f59e0b", padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", cursor: "pointer" }} onClick={() => setExpanded(!expanded)}>
-        <div style={{display:'flex', alignItems:'center', gap:8}}><AlertTriangle size={18} color={severity==='high'?"#ef4444":"#d97706"} /> <strong>{risk.title}</strong></div>
+        <div style={{display:'flex', alignItems:'center', gap:8}}><AlertTriangle size={18} color={severity==='high'?"#ef4444":"#f59e0b"} /> <strong>{risk.title}</strong></div>
         {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
       </div>
       <p style={{ marginTop: 8, fontSize: 14, color: "var(--muted)" }}>{risk.description}</p>
-      {expanded && risk.simple_explanation && (<div style={{ marginTop: 10, padding: 10, background: "rgba(0,0,0,0.03)", borderRadius: 6 }}><p style={{ fontSize: 12, margin: 0, fontStyle: "italic", color: "var(--text)" }}><strong>💡 Insight:</strong> {risk.simple_explanation}</p></div>)}
     </div>
   );
 };
@@ -392,13 +419,13 @@ const ExpandableRiskCard = ({ risk }: { risk: any }) => {
 const AlternativesSection = ({ alternatives, onAdd }: { alternatives: { title: string; description: string }[], onAdd: (item: string) => void }) => {
   if (!alternatives || alternatives.length === 0) return null;
   return (
-    <div className="card" style={{ marginBottom: 36, border: "1px solid #86efac", background: "#f0fdf4", padding: 16 }}>
-      <div className="section-title" style={{color: "#15803d"}}><Sparkles size={20} /><h2>Better Swaps</h2></div>
+    <div className="card" style={{ marginBottom: 36, border: "1px solid #86efac", background: "rgba(34,197,94,0.05)", padding: 16 }}>
+      <div className="section-title" style={{color: "var(--primary)"}}><Sparkles size={20} /><h2>Better Swaps</h2></div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {alternatives.map((alt, i) => (
-          <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "white", padding: 12, borderRadius: 8, border: "1px solid #bbf7d0", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
-            <div><strong style={{ color: "#15803d", fontSize: 13 }}>{alt.title}</strong><p style={{ fontSize: 12, color: "#14532d", margin: "2px 0 0" }}>{alt.description}</p></div>
-            <button onClick={() => onAdd(alt.title)} style={{ background: "#dcfce7", border: "none", borderRadius: "50%", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#15803d" }}><Plus size={18} /></button>
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--card)", padding: 12, borderRadius: 8, border: "1px solid var(--border)", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
+            <div><strong style={{ color: "var(--primary)", fontSize: 13 }}>{alt.title}</strong><p style={{ fontSize: 12, color: "var(--muted)", margin: "2px 0 0" }}>{alt.description}</p></div>
+            <button onClick={() => onAdd(alt.title)} style={{ background: "rgba(34,197,94,0.2)", border: "none", borderRadius: "50%", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#15803d" }}><Plus size={18} /></button>
           </div>
         ))}
       </div>
@@ -406,7 +433,7 @@ const AlternativesSection = ({ alternatives, onAdd }: { alternatives: { title: s
   );
 };
 
-const IngredientSpotlight = ({ items }: { items: { name: string; type: "good" | "bad" | "neutral"; description: string }[] }) => {
+const IngredientSpotlight = ({ items, theme }: { items: { name: string; type: "good" | "bad" | "neutral"; description: string }[], theme: string }) => {
     if (!items || items.length === 0) return null;
     return (
       <div style={{ marginBottom: 30 }}>
@@ -420,7 +447,7 @@ const IngredientSpotlight = ({ items }: { items: { name: string; type: "good" | 
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                 {item.type === "good" ? <ThumbsUp size={14} color="#16a34a" /> : item.type === "bad" ? <ThumbsDown size={14} color="#dc2626" /> : <Info size={14} color="#6b7280" />}
-                <strong style={{ fontSize: 13 }}>{item.name}</strong>
+                <strong style={{ fontSize: 13, color: "var(--text)" }}>{item.name}</strong>
               </div>
               <p style={{ fontSize: 11, color: "var(--muted)", margin: 0 }}>{item.description}</p>
             </div>
@@ -431,7 +458,7 @@ const IngredientSpotlight = ({ items }: { items: { name: string; type: "good" | 
 };
 
 const StatusBadge = ({ type, detected }: { type: 'bad' | 'good', detected: boolean }) => {
-    if (type === 'bad') return detected ? <span style={{ color: "#dc2626", background: "#fef2f2", padding: "4px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}><AlertOctagon size={12} /> DETECTED</span> : <span style={{ color: "#16a34a", background: "#f0fdf4", padding: "4px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}><CheckCircle2 size={12} /> NONE</span>;
+    if (type === 'bad') return detected ? <span style={{ color: "#dc2626", background: "rgba(220,38,38,0.1)", padding: "4px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}><AlertOctagon size={12} /> DETECTED</span> : <span style={{ color: "#16a34a", background: "rgba(34,197,94,0.1)", padding: "4px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}><CheckCircle2 size={12} /> NONE</span>;
     return null; 
 };
 
@@ -611,11 +638,11 @@ export default function Page() {
 
       {history.length > 0 && !result && !compareItem && (
         <section className="card reveal" style={{ marginBottom: 36 }}>
-          <HealthTrendChart history={history} />
+          <HealthTrendChart history={history} theme={theme} />
           {/* DASHBOARD GRID */}
           <div style={{ display: "grid", gap: 20, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
-            <GamificationSection history={history} />
-            <ShoppingListCard items={shoppingList} onRemove={removeFromShoppingList} onClear={clearShoppingList} />
+            <GamificationSection history={history} theme={theme} />
+            <ShoppingListCard items={shoppingList} onRemove={removeFromShoppingList} onClear={clearShoppingList} theme={theme} />
           </div>
           
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, marginTop: 30 }}>
@@ -719,19 +746,19 @@ export default function Page() {
               {/* TIER 1: CRITICAL INTEL (Verdict & Dietary) */}
               <VerdictBanner score={calculateHealthScore(result.risks)} text={result.dietary ? getVerdict(calculateHealthScore(result.risks), result.dietary) : result.summary.split('.')[0] + "."} />
               
-              {result.dietary && <DietaryMatrix items={result.dietary} />}
+              {result.dietary && <DietaryMatrix items={result.dietary} theme={theme} />}
 
               {/* TIER 2: DATA DASHBOARD (X-Ray & Charts) */}
               <div className="card reveal" style={{ padding: 20, marginBottom: 30 }}>
-                {result.breakdown && <IngredientXRay breakdown={result.breakdown} />}
+                {result.breakdown && <IngredientXRay breakdown={result.breakdown} theme={theme} />}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20, marginTop: 20 }}>
-                  <div><h4 style={{fontSize:12, fontWeight:600, color:"var(--muted)", marginBottom:10}}>RISK SEVERITY</h4><RiskAnalysisChart risks={result.risks} /></div>
-                  <div><h4 style={{fontSize:12, fontWeight:600, color:"var(--muted)", marginBottom:10}}>HEALTH SCORE</h4><HealthScoreGauge risks={result.risks} /></div>
+                  <div><h4 style={{fontSize:12, fontWeight:600, color:"var(--muted)", marginBottom:10}}>RISK SEVERITY</h4><RiskAnalysisChart risks={result.risks} theme={theme} /></div>
+                  <div><h4 style={{fontSize:12, fontWeight:600, color:"var(--muted)", marginBottom:10}}>HEALTH SCORE</h4><HealthScoreGauge risks={result.risks} theme={theme} /></div>
                 </div>
               </div>
               
               {/* TIER 3: DETAILS (Spotlight, Risks, Trade-offs) */}
-              {result.spotlight && <IngredientSpotlight items={result.spotlight} />}
+              {result.spotlight && <IngredientSpotlight items={result.spotlight} theme={theme} />}
 
               <div className="section-title"><AlertTriangle size={22} /><h2>Risks & Insights</h2></div>
               {result.risks.map((r, i) => <ExpandableRiskCard key={i} risk={r} />)}
@@ -746,9 +773,24 @@ export default function Page() {
               
               <div style={{ display: "flex", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
                 <button className="primary" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8 }} onClick={() => { const text = `Intent: ${result.intent}\nSummary: ${result.summary}`; navigator.clipboard.writeText(text); alert("Analysis copied to clipboard"); }}><Clipboard size={16} /> Copy</button>
-                <button onClick={readSummary} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, cursor: "pointer", padding: "10px" }}><Volume2 size={16} /> Listen</button>
-                <button onClick={() => { if (navigator.share) { navigator.share({ title: 'FoodBuddy Analysis', text: result.summary }); } else { alert("Sharing not supported."); } }} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, cursor: "pointer", padding: "10px" }}><Share2 size={16} /> Share</button>
-                <button onClick={handleTriggerCompare} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8, background: "var(--card)", border: "2px solid #3b82f6", color: "#2563eb", borderRadius: 8, cursor: "pointer", padding: "10px", animation: "blue-pulse 2s infinite" }}><Split size={16} /> Compare</button>
+                <button onClick={readSummary} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8, 
+                    background: theme === 'dark' ? "rgba(255,255,255,0.05)" : "white", 
+                    border: `1px solid ${theme === 'dark' ? "rgba(255,255,255,0.2)" : "#e5e7eb"}`, 
+                    color: theme === 'dark' ? "#e2e8f0" : "#374151",
+                    borderRadius: 8, cursor: "pointer", padding: "10px" 
+                }}><Volume2 size={16} /> Listen</button>
+                <button onClick={() => { if (navigator.share) { navigator.share({ title: 'FoodBuddy Analysis', text: result.summary }); } else { alert("Sharing not supported."); } }} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8, 
+                    background: theme === 'dark' ? "rgba(255,255,255,0.05)" : "white", 
+                    border: `1px solid ${theme === 'dark' ? "rgba(255,255,255,0.2)" : "#e5e7eb"}`, 
+                    color: theme === 'dark' ? "#e2e8f0" : "#374151",
+                    borderRadius: 8, cursor: "pointer", padding: "10px" 
+                }}><Share2 size={16} /> Share</button>
+                <button onClick={handleTriggerCompare} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8, 
+                    background: theme === 'dark' ? "rgba(59, 130, 246, 0.1)" : "white", 
+                    border: `1px solid ${theme === 'dark' ? "#60a5fa" : "#3b82f6"}`, 
+                    color: theme === 'dark' ? "#60a5fa" : "#2563eb",
+                    borderRadius: 8, cursor: "pointer", padding: "10px"
+                }}><Split size={16} /> Compare</button>
               </div>
 
               <div className="card reveal" style={{ marginTop: 24, border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)", padding: "16px" }}>
