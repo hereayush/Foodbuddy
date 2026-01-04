@@ -737,8 +737,8 @@ export default function Page() {
                 </div>
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
-                <div style={{ flex: "1 1 250px", padding: 16, background: "var(--background)", borderRadius: 12, textAlign: "center" }}><h4 style={{ color: "var(--muted)", marginBottom: 8 }}>Product A</h4><HealthScoreGauge risks={compareItem.risks} small /><p style={{ fontSize: 13, color: "var(--muted)", marginTop: 8 }}>{compareItem.risks.length} Risks Detected</p></div>
-                <div style={{ flex: "1 1 250px", padding: 16, background: "var(--background)", borderRadius: 12, textAlign: "center" }}><h4 style={{ color: "var(--muted)", marginBottom: 8 }}>Product B</h4><HealthScoreGauge risks={result.risks} small /><p style={{ fontSize: 13, color: "var(--muted)", marginTop: 8 }}>{result.risks.length} Risks Detected</p></div>
+                <div style={{ flex: "1 1 250px", padding: 16, background: "var(--background)", borderRadius: 12, textAlign: "center" }}><h4 style={{ color: "var(--muted)", marginBottom: 8 }}>Product A</h4><HealthScoreGauge risks={compareItem.risks} small theme={theme} /><p style={{ fontSize: 13, color: "var(--muted)", marginTop: 8 }}>{compareItem.risks.length} Risks Detected</p></div>
+                <div style={{ flex: "1 1 250px", padding: 16, background: "var(--background)", borderRadius: 12, textAlign: "center" }}><h4 style={{ color: "var(--muted)", marginBottom: 8 }}>Product B</h4><HealthScoreGauge risks={result.risks} small theme={theme} /><p style={{ fontSize: 13, color: "var(--muted)", marginTop: 8 }}>{result.risks.length} Risks Detected</p></div>
               </div>
             </div>
           ) : (
