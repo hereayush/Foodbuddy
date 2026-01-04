@@ -37,6 +37,11 @@ import {
   ThumbsUp,
   ThumbsDown,
   Utensils,
+  ShoppingCart,
+  Plus,
+  X,
+  Copy,
+  TrendingUp,
 } from "lucide-react";
 import {
   BarChart,
@@ -48,6 +53,9 @@ import {
   Cell,
   PieChart,
   Pie,
+  AreaChart,
+  Area,
+  CartesianGrid,
 } from "recharts";
 import { recognize } from "tesseract.js";
 
@@ -93,21 +101,8 @@ type HistoryItem = {
 /* --------- HELPERS --------- */
 function getSeverity(description: string) {
   const text = description.toLowerCase();
-  if (
-    text.includes("cancer") ||
-    text.includes("diabetes") ||
-    text.includes("obesity") ||
-    text.includes("toxic")
-  )
-    return "high";
-
-  if (
-    text.includes("irritation") ||
-    text.includes("allergic") ||
-    text.includes("hyperactivity")
-  )
-    return "medium";
-
+  if (text.includes("cancer") || text.includes("diabetes") || text.includes("obesity") || text.includes("toxic")) return "high";
+  if (text.includes("irritation") || text.includes("allergic") || text.includes("hyperactivity")) return "medium";
   return "low";
 }
 
@@ -127,10 +122,8 @@ function generateComparisonInsight(itemA: AnalysisResponse, itemB: AnalysisRespo
   const scoreB = calculateHealthScore(itemB.risks);
   const winner = scoreA >= scoreB ? "Product A" : "Product B";
   const loser = scoreA >= scoreB ? "Product B" : "Product A";
-  
   const loserRisks = scoreA >= scoreB ? itemB.risks : itemA.risks;
   const badIngredient = loserRisks.find(r => getSeverity(r.description) === "high")?.title || "more additives";
-
   return `The clear winner is ${winner}. It avoids concerns like ${badIngredient.toLowerCase()} found in ${loser}, making it a safer long-term choice.`;
 }
 
@@ -138,26 +131,17 @@ function getBestForTags(itemA: AnalysisResponse, itemB: AnalysisResponse) {
   const scoreA = calculateHealthScore(itemA.risks);
   const scoreB = calculateHealthScore(itemB.risks);
   const tags = [];
-  
   const winnerRisks = scoreA >= scoreB ? itemA.risks : itemB.risks;
   const winnerText = scoreA >= scoreB ? "Product A" : "Product B";
-
   if (!winnerRisks.some(r => r.title.toLowerCase().includes("sugar"))) tags.push("Weight Loss");
   if (!winnerRisks.some(r => r.description.toLowerCase().includes("hyperactivity"))) tags.push("Kids");
   if (calculateHealthScore(winnerRisks) > 80) tags.push("Daily Use");
-  
   return { winner: winnerText, tags };
 }
 
-// --- NEW: VERDICT GENERATOR ---
 function getVerdict(score: number, dietary: any[]) {
-  // 1. Check for red flags in dietary
   const unsafeDiet = dietary.find(d => d.status === "unsafe");
-  if (unsafeDiet) {
-    return `⚠️ Caution: This product is NOT ${unsafeDiet.name}-friendly due to ${unsafeDiet.reason}.`;
-  }
-
-  // 2. Check Health Score
+  if (unsafeDiet) return `⚠️ Caution: This product is NOT ${unsafeDiet.name}-friendly due to ${unsafeDiet.reason}.`;
   if (score >= 80) return "✅ Excellent Choice! This product has a clean, natural profile.";
   if (score >= 50) return "⚖️ Moderate Choice. Contains some processed ingredients; consume in moderation.";
   return "❌ Highly Processed. Contains multiple additives or high sugar levels. Limit consumption.";
@@ -165,262 +149,57 @@ function getVerdict(score: number, dietary: any[]) {
 
 /* --------- 🔒 FRONTEND INPUT VALIDATION --------- */
 function looksLikeIngredientInput(input: string) {
-  const bannedKeywords = [
-    "chatgpt", "fabric", "cloth", "clothes", "shirt", "pants",
-    "mobile", "phone", "laptop", "program", "who are you",
-    "what is", "how to", "how are you", "hello", "hi ", "hey",
-    "table", "wood", "plastic",
-  ];
-
+  const bannedKeywords = ["chatgpt", "fabric", "cloth", "clothes", "shirt", "pants", "mobile", "phone", "laptop", "program", "who are you", "what is", "how to", "how are you", "hello", "hi ", "hey", "table", "wood", "plastic"];
   const text = input.toLowerCase().trim();
   if (text.length < 3) return false;
   if (text.split(" ").length > 500) return false;
   return !bannedKeywords.some((word) => text.includes(word));
 }
 
-/* --------- 🔮 MOCK DATA ENRICHER (SMART LOGIC) --------- */
-function mockEnhanceData(
-  data: AnalysisResponse,
-  context: string,
-  ingredientsInput: string
-): AnalysisResponse {
+/* --------- 🔮 MOCK DATA ENRICHER --------- */
+function mockEnhanceData(data: AnalysisResponse, context: string, ingredientsInput: string): AnalysisResponse {
   if (data.intent === "Invalid input") return data;
-
   const enhanced = { ...data };
   const lowerInput = ingredientsInput.toLowerCase();
   const alternatives = [];
 
-  // --- DIETARY CHECK LOGIC ---
   const diets: { name: string; status: "safe" | "unsafe" | "warning"; reason?: string }[] = [];
-  
-  // Vegan
-  if (lowerInput.match(/milk|whey|casein|cheese|butter|cream|yogurt|lactose|egg|honey|beef|chicken|pork|gelatin/)) {
-    diets.push({ name: "Vegan", status: "unsafe", reason: "Animal Products" });
-  } else {
-    diets.push({ name: "Vegan", status: "safe" });
-  }
-
-  // Gluten-Free
-  if (lowerInput.match(/wheat|barley|rye|malt|gluten|flour/)) {
-    if (!lowerInput.includes("almond flour") && !lowerInput.includes("coconut flour") && !lowerInput.includes("rice flour")) {
-      diets.push({ name: "Gluten-Free", status: "unsafe", reason: "Contains Gluten" });
-    } else {
-      diets.push({ name: "Gluten-Free", status: "safe" });
-    }
-  } else {
-    diets.push({ name: "Gluten-Free", status: "safe" });
-  }
-
-  // Keto
-  if (lowerInput.match(/sugar|syrup|dextrose|fructose|maltodextrin|corn|potato|rice|flour|oats/)) {
-    diets.push({ name: "Keto", status: "unsafe", reason: "High Carbs" });
-  } else {
-    diets.push({ name: "Keto", status: "safe" });
-  }
+  if (lowerInput.match(/milk|whey|casein|cheese|butter|cream|yogurt|lactose|egg|honey|beef|chicken|pork|gelatin/)) diets.push({ name: "Vegan", status: "unsafe", reason: "Animal Products" }); else diets.push({ name: "Vegan", status: "safe" });
+  if (lowerInput.match(/wheat|barley|rye|malt|gluten|flour/)) { if (!lowerInput.includes("almond flour") && !lowerInput.includes("coconut flour") && !lowerInput.includes("rice flour")) diets.push({ name: "Gluten-Free", status: "unsafe", reason: "Contains Gluten" }); else diets.push({ name: "Gluten-Free", status: "safe" }); } else diets.push({ name: "Gluten-Free", status: "safe" });
+  if (lowerInput.match(/sugar|syrup|dextrose|fructose|maltodextrin|corn|potato|rice|flour|oats/)) diets.push({ name: "Keto", status: "unsafe", reason: "High Carbs" }); else diets.push({ name: "Keto", status: "safe" });
   enhanced.dietary = diets;
 
-  // --- SPOTLIGHT GENERATION ---
   const spotlight = [];
-  if (lowerInput.includes("whole grain") || lowerInput.includes("oats") || lowerInput.includes("wheat")) {
-    spotlight.push({ name: "Whole Grains", type: "good" as const, description: "Great for fiber & digestion." });
-  }
-  if (lowerInput.includes("protein") || lowerInput.includes("chicken") || lowerInput.includes("egg") || lowerInput.includes("whey")) {
-    spotlight.push({ name: "Protein Rich", type: "good" as const, description: "Helps build muscle & satiety." });
-  }
-  if (lowerInput.includes("fructose") || lowerInput.includes("corn syrup")) {
-    spotlight.push({ name: "Corn Syrup", type: "bad" as const, description: "Cheap sweetener, high glycemic index." });
-  }
-  if (lowerInput.includes("red 40") || lowerInput.includes("blue 1") || lowerInput.includes("yellow")) {
-    spotlight.push({ name: "Artificial Colors", type: "bad" as const, description: "Linked to hyperactivity in kids." });
-  }
-  if (lowerInput.includes("palm oil")) {
-    spotlight.push({ name: "Palm Oil", type: "bad" as const, description: "High in saturated fats." });
-  }
-  if (spotlight.length === 0) {
-    spotlight.push({ name: "Main Ingredients", type: "neutral" as const, description: "Standard composition." });
-  }
+  if (lowerInput.includes("whole grain") || lowerInput.includes("oats") || lowerInput.includes("wheat")) spotlight.push({ name: "Whole Grains", type: "good" as const, description: "Fiber & Digestion" });
+  if (lowerInput.includes("protein") || lowerInput.includes("chicken") || lowerInput.includes("egg") || lowerInput.includes("whey")) spotlight.push({ name: "Protein", type: "good" as const, description: "Muscle & Satiety" });
+  if (lowerInput.includes("fructose") || lowerInput.includes("corn syrup")) spotlight.push({ name: "Corn Syrup", type: "bad" as const, description: "High Glycemic" });
+  if (lowerInput.includes("red 40") || lowerInput.includes("blue 1")) spotlight.push({ name: "Artif. Colors", type: "bad" as const, description: "Hyperactivity" });
+  if (lowerInput.includes("palm oil")) spotlight.push({ name: "Palm Oil", type: "bad" as const, description: "Saturated Fats" });
+  if (spotlight.length === 0) spotlight.push({ name: "Ingredients", type: "neutral" as const, description: "Standard Mix" });
   enhanced.spotlight = spotlight.slice(0, 4);
 
-  // --- INGREDIENT CLASSIFICATION ---
   const ingredientsList = ingredientsInput.split(/,|;/).map(i => i.trim().toLowerCase());
-  let naturalCount = 0;
-  let processedCount = 0;
-  let additivesCount = 0;
-
+  let naturalCount = 0; let processedCount = 0; let additivesCount = 0;
   ingredientsList.forEach(ing => {
-    if (ing.includes("extract") || ing.includes("syrup") || ing.includes("flour") || ing.includes("oil") || ing.includes("salt") || ing.includes("sugar")) {
-      processedCount++;
-    } else if (ing.includes("red") || ing.includes("blue") || ing.includes("yellow") || ing.includes("acid") || ing.includes("gum") || ing.includes("benzoate") || ing.includes("sorbate") || ing.includes("glutamate")) {
-      additivesCount++;
-    } else {
-      naturalCount++;
-    }
+    if (ing.includes("extract") || ing.includes("syrup") || ing.includes("flour") || ing.includes("oil") || ing.includes("salt") || ing.includes("sugar")) processedCount++;
+    else if (ing.includes("red") || ing.includes("blue") || ing.includes("yellow") || ing.includes("acid") || ing.includes("gum") || ing.includes("benzoate") || ing.includes("sorbate")) additivesCount++;
+    else naturalCount++;
   });
-  
   const total = naturalCount + processedCount + additivesCount || 1;
-  enhanced.breakdown = {
-    natural: Math.round((naturalCount / total) * 100),
-    processed: Math.round((processedCount / total) * 100),
-    additives: Math.round((additivesCount / total) * 100),
-  };
+  enhanced.breakdown = { natural: Math.round((naturalCount / total) * 100), processed: Math.round((processedCount / total) * 100), additives: Math.round((additivesCount / total) * 100) };
   enhanced._rawLength = ingredientsList.length;
 
-  if (lowerInput.includes("syrup") || lowerInput.includes("sugar") || lowerInput.includes("cane") || lowerInput.includes("soda")) {
-    if (context === "kids") {
-      alternatives.push({ title: "Hydration for Kids", description: "Try water infused with berries or diluted 100% fruit juice." });
-    } else {
-      alternatives.push({ title: "Natural Sweeteners", description: "Consider Stevia or Monk Fruit to avoid spikes." });
-    }
-  }
-  if (lowerInput.includes("oil") || lowerInput.includes("fried") || lowerInput.includes("chip") || lowerInput.includes("salt")) {
-    alternatives.push({ title: "Crunchy Alternatives", description: "Air-popped popcorn or roasted chickpeas offer crunch with less fat." });
-  }
-  if (alternatives.length === 0) {
-    alternatives.push({ title: "Whole Food Option", description: "Choose whole, unprocessed versions of these ingredients." });
-  }
-
+  if (lowerInput.includes("sugar") || lowerInput.includes("syrup")) { if (context === "kids") alternatives.push({ title: "Diluted Juice", description: "Less sugar for kids." }); else alternatives.push({ title: "Stevia / Monk Fruit", description: "Zero calorie natural sweetener." }); }
+  if (lowerInput.includes("oil") || lowerInput.includes("fried")) alternatives.push({ title: "Air-Popped Snacks", description: "Crunchy but less fat." });
+  if (alternatives.length === 0) alternatives.push({ title: "Whole Foods", description: "Choose unprocessed options." });
   enhanced.alternatives = alternatives;
-  enhanced.risks = data.risks.map((r) => ({
-    ...r,
-    confidence: Math.random() > 0.4 ? "High" : "Medium",
-    simple_explanation: `In simple terms: This is added for ${r.title.includes("Sugar") ? "flavor" : "texture/preservation"}, but ${context === "kids" ? "parents should be cautious." : "it offers little nutrition."}`,
-  }));
-
+  enhanced.risks = data.risks.map((r) => ({ ...r, confidence: Math.random() > 0.4 ? "High" : "Medium", simple_explanation: `Added for ${r.title.includes("Sugar") ? "flavor" : "preservation"}, but offers little nutrition.` }));
   return enhanced;
 }
 
-/* --------- 📊 CHART COMPONENTS --------- */
-const RiskAnalysisChart = ({ risks }: { risks: { description: string }[] }) => {
-  const data = [
-    { name: "High", count: 0, color: "#ef4444" },
-    { name: "Medium", count: 0, color: "#f59e0b" },
-    { name: "Low", count: 0, color: "#22c55e" },
-  ];
-  risks.forEach((r) => {
-    const severity = getSeverity(r.description);
-    if (severity === "high") data[0].count++;
-    else if (severity === "medium") data[1].count++;
-    else data[2].count++;
-  });
-  if (risks.length === 0) return null;
-
-  return (
-    <div style={{ width: "100%", height: 250, marginTop: 10, marginBottom: 10 }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} layout="vertical" margin={{ left: 0, right: 30 }}>
-          <XAxis type="number" hide />
-          <YAxis dataKey="name" type="category" width={60} tick={{ fill: "var(--text)", fontSize: 12, fontWeight: 600 }} />
-          <Tooltip cursor={{ fill: "rgba(0,0,0,0.1)" }} contentStyle={{ borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)" }} />
-          <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={30}>
-            {data.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-      <p style={{ textAlign: "center", fontSize: 12, color: "var(--muted)" }}>Risk Severity Distribution</p>
-    </div>
-  );
-};
-
-const HealthScoreGauge = ({ risks, small = false }: { risks: { description: string }[], small?: boolean }) => {
-  const score = calculateHealthScore(risks);
-  let color = "#22c55e";
-  if (score < 50) color = "#ef4444";
-  else if (score < 80) color = "#f59e0b";
-  const data = [{ name: "Score", value: score, fill: color }, { name: "Remaining", value: 100 - score, fill: "var(--border)" }];
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: small ? 120 : 180, marginTop: 10 }}>
-      <div style={{ position: "relative", width: small ? 140 : 200, height: small ? 70 : 100 }}>
-        <ResponsiveContainer width="100%" height="200%">
-          <PieChart>
-            <Pie data={data} cx="50%" cy="50%" startAngle={180} endAngle={0} innerRadius={small ? 40 : 60} outerRadius={small ? 55 : 80} dataKey="value" stroke="none">
-              <Cell fill={data[0].fill} />
-              <Cell fill={data[1].fill} />
-            </Pie>
-          </PieChart>
-        </ResponsiveContainer>
-        <div style={{ position: "absolute", top: "75%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center", width: "100%" }}>
-          <div style={{ fontSize: small ? 24 : 32, fontWeight: 800, color: "var(--text)", lineHeight: 1 }}>{score}</div>
-          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Score</div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const IngredientXRay = ({ breakdown }: { breakdown: { natural: number; processed: number; additives: number } }) => {
-  if (!breakdown) return null;
-  return (
-    <div style={{ marginTop: 20, marginBottom: 20 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 600, color: "var(--muted)", marginBottom: 8 }}>
-        <span>Ingredient Composition</span>
-        <span>{breakdown.additives < 20 ? "✅ Clean Label" : "⚠️ High Processing"}</span>
-      </div>
-      <div style={{ display: "flex", height: 12, borderRadius: 6, overflow: "hidden", width: "100%" }}>
-        <div style={{ width: `${breakdown.natural}%`, background: "#22c55e" }} />
-        <div style={{ width: `${breakdown.processed}%`, background: "#f59e0b" }} />
-        <div style={{ width: `${breakdown.additives}%`, background: "#ef4444" }} />
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 11 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: "#22c55e" }} /><span>Natural ({breakdown.natural}%)</span></div>
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: "#f59e0b" }} /><span>Processed ({breakdown.processed}%)</span></div>
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: "#ef4444" }} /><span>Additives ({breakdown.additives}%)</span></div>
-      </div>
-    </div>
-  );
-};
-
-const DietaryMatrix = ({ items }: { items: { name: string; status: "safe" | "unsafe" | "warning"; reason?: string }[] }) => {
-  if (!items || items.length === 0) return null;
-
-  return (
-    <div style={{ marginBottom: 30 }}>
-      <div className="section-title"><Utensils size={22} /><h2>Dietary Checks</h2></div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: 10 }}>
-        {items.map((item, i) => (
-          <div key={i} style={{ 
-            padding: 10, borderRadius: 10, textAlign: "center",
-            background: item.status === "safe" ? "#f0fdf4" : "#fef2f2",
-            border: `1px solid ${item.status === "safe" ? "#bbf7d0" : "#fecaca"}`
-          }}>
-            <div style={{ marginBottom: 4, display: "flex", justifyContent: "center" }}>
-              {item.status === "safe" ? <CheckCircle2 size={20} color="#16a34a" /> : <XCircle size={20} color="#dc2626" />}
-            </div>
-            <strong style={{ fontSize: 12, color: "var(--text)", display: "block" }}>{item.name}</strong>
-            {item.reason && <span style={{ fontSize: 10, color: "#dc2626", display: "block", marginTop: 2 }}>{item.reason}</span>}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-const IngredientSpotlight = ({ items }: { items: { name: string; type: "good" | "bad" | "neutral"; description: string }[] }) => {
-  if (!items || items.length === 0) return null;
-  return (
-    <div style={{ marginBottom: 30 }}>
-      <div className="section-title"><Microscope size={22} /><h2>Ingredient Spotlight</h2></div>
-      <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8 }}>
-        {items.map((item, i) => (
-          <div key={i} style={{ 
-            minWidth: 200, padding: 14, borderRadius: 12, 
-            background: item.type === "good" ? "#f0fdf4" : item.type === "bad" ? "#fef2f2" : "var(--card)", 
-            border: `1px solid ${item.type === "good" ? "#bbf7d0" : item.type === "bad" ? "#fecaca" : "var(--border)"}`,
-            flexShrink: 0 
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              {item.type === "good" ? <ThumbsUp size={16} color="#16a34a" /> : item.type === "bad" ? <ThumbsDown size={16} color="#dc2626" /> : <Info size={16} color="#6b7280" />}
-              <strong style={{ fontSize: 14, color: item.type === "good" ? "#16a34a" : item.type === "bad" ? "#dc2626" : "var(--text)" }}>{item.name}</strong>
-            </div>
-            <p style={{ fontSize: 12, color: "var(--muted)", margin: 0, lineHeight: 1.4 }}>{item.description}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
 /* --------- 🧩 UI COMPONENTS --------- */
+
+// --- 1. CONTEXT SELECTOR (Re-added here explicitly) ---
 const ContextSelector = ({ selected, onSelect }: { selected: string; onSelect: (c: string) => void }) => {
   const contexts = [
     { id: "general", label: "General", icon: <ShieldCheck size={14} /> },
@@ -439,43 +218,187 @@ const ContextSelector = ({ selected, onSelect }: { selected: string; onSelect: (
   );
 };
 
-const ExpandableRiskCard = ({ risk }: { risk: any }) => {
-  const [expanded, setExpanded] = useState(false);
-  const severity = getSeverity(risk.description);
-  const confidence = risk.confidence || "High";
+const VerdictBanner = ({ score, text }: { score: number, text: string }) => {
+  const isGood = score >= 50;
   return (
-    <div className="card card-risk reveal" style={{ marginBottom: 14 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", cursor: "pointer" }} onClick={() => setExpanded(!expanded)}>
-        <div>
-          <strong style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {risk.title}
-            <span className={`severity severity-${severity}`}>{severity.toUpperCase()}</span>
-            {confidence !== "High" && <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "#fef3c7", color: "#d97706", display: "flex", alignItems: "center", gap: 4 }}><HelpCircle size={10} /> Uncertainty</span>}
-          </strong>
-        </div>
-        {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+    <div style={{ 
+      background: isGood ? "linear-gradient(135deg, #16a34a, #15803d)" : "linear-gradient(135deg, #dc2626, #b91c1c)",
+      borderRadius: 16, padding: "24px", color: "white", marginBottom: 24,
+      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)"
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+        {isGood ? <CheckCircle2 size={32} /> : <AlertTriangle size={32} />}
+        <h2 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>{isGood ? "Good Choice" : "Caution"}</h2>
       </div>
-      <p style={{ marginTop: 8 }}>{risk.description}</p>
-      {expanded && risk.simple_explanation && (
-        <div style={{ marginTop: 12, padding: 12, background: "rgba(0,0,0,0.03)", borderRadius: 8, borderLeft: "3px solid var(--primary)" }}>
-          <p style={{ fontSize: 13, margin: 0, fontStyle: "italic", color: "var(--muted)" }}><strong>💡 AI Insight:</strong> {risk.simple_explanation}</p>
-        </div>
-      )}
+      <p style={{ margin: 0, fontSize: 16, opacity: 0.9 }}>{text}</p>
     </div>
   );
 };
 
-const AlternativesSection = ({ alternatives }: { alternatives: { title: string; description: string }[] }) => {
+const DietaryMatrix = ({ items }: { items: { name: string; status: "safe" | "unsafe" | "warning"; reason?: string }[] }) => {
+  if (!items || items.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 24, display: "flex", gap: 10, flexWrap: "wrap" }}>
+      {items.map((item, i) => (
+        <div key={i} style={{ 
+          flex: "1 1 auto", padding: "8px 16px", borderRadius: 99, 
+          background: item.status === "safe" ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.1)", 
+          border: `1px solid ${item.status === "safe" ? "#22c55e" : "#ef4444"}`,
+          color: item.status === "safe" ? "#15803d" : "#991b1b",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontWeight: 700, fontSize: 13
+        }}>
+          {item.status === "safe" ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+          {item.name} {item.reason ? `(${item.reason})` : ""}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const IngredientXRay = ({ breakdown }: { breakdown: { natural: number; processed: number; additives: number } }) => {
+  if (!breakdown) return null;
+  const processedColor = "#d97706";
+  return (
+    <div style={{ marginBottom: 24, background: "#0f172a", padding: 20, borderRadius: 16, color: "white", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700, color: "#94a3b8" }}><FlaskConical size={18} /> INGREDIENT X-RAY</span>
+        <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: breakdown.additives < 20 ? "#22c55e" : "#ef4444", color: "white", fontWeight: 700 }}>{breakdown.additives < 20 ? "CLEAN" : "PROCESSED"}</span>
+      </div>
+      <div style={{ display: "flex", height: 8, borderRadius: 4, overflow: "hidden", width: "100%", marginBottom: 12 }}>
+        <div style={{ width: `${breakdown.natural}%`, background: "#4ade80" }} />
+        <div style={{ width: `${breakdown.processed}%`, background: processedColor }} />
+        <div style={{ width: `${breakdown.additives}%`, background: "#f87171" }} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, textAlign: "center", fontSize: 11, color: "#cbd5e1" }}>
+        <div><div style={{color:"#4ade80", fontSize:16, fontWeight:800}}>{breakdown.natural}%</div>Natural</div>
+        <div><div style={{color: processedColor, fontSize:16, fontWeight:800}}>{breakdown.processed}%</div>Processed</div>
+        <div><div style={{color:"#f87171", fontSize:16, fontWeight:800}}>{breakdown.additives}%</div>Additives</div>
+      </div>
+    </div>
+  );
+};
+
+const RiskAnalysisChart = ({ risks }: { risks: { description: string }[] }) => {
+  const data = [{ name: "High", count: 0, color: "#ef4444" }, { name: "Med", count: 0, color: "#d97706" }, { name: "Low", count: 0, color: "#22c55e" }];
+  risks.forEach((r) => { const s = getSeverity(r.description); if (s === "high") data[0].count++; else if (s === "medium") data[1].count++; else data[2].count++; });
+  return (
+    <div style={{ width: "100%", height: 140 }}>
+      <ResponsiveContainer><BarChart data={data}><Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={20}>{data.map((e, i) => <Cell key={i} fill={e.color} />)}</Bar></BarChart></ResponsiveContainer>
+    </div>
+  );
+};
+
+const HealthScoreGauge = ({ risks, small = false }: { risks: { description: string }[], small?: boolean }) => {
+  const score = calculateHealthScore(risks);
+  let color = "#22c55e"; if (score < 50) color = "#ef4444"; else if (score < 80) color = "#d97706";
+  const data = [{ name: "Score", value: score, fill: color }, { name: "Remaining", value: 100 - score, fill: "#e5e7eb" }];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 180 }}>
+      <div style={{ position: "relative", width: 160, height: 80 }}>
+        <ResponsiveContainer width="100%" height="200%">
+          <PieChart><Pie data={data} cx="50%" cy="50%" startAngle={180} endAngle={0} innerRadius={60} outerRadius={80} dataKey="value" stroke="none"><Cell fill={data[0].fill} /><Cell fill={data[1].fill} /></Pie></PieChart>
+        </ResponsiveContainer>
+        <div style={{ position: "absolute", bottom: 0, left: "50%", transform: "translate(-50%, 0)", textAlign: "center" }}>
+          <div style={{ fontSize: 28, fontWeight: 800, color: "var(--text)", lineHeight: 1 }}>{score}</div>
+          <div style={{ fontSize: 10, color: "var(--muted)" }}>HEALTH SCORE</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const HealthTrendChart = ({ history }: { history: HistoryItem[] }) => {
+  if (!history || history.length < 2) return null;
+  const data = history.map(h => ({ name: new Date(h.timestamp).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }), score: calculateHealthScore(h.result.risks) })).reverse();
+  return (
+    <div className="card reveal" style={{ marginBottom: 24, padding: 20, background: "linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%)", border: "1px solid #bbf7d0" }}>
+      <div className="section-title"><TrendingUp size={20} color="#15803d" /><h2 style={{ color: "#15803d", fontSize: 16 }}>Your Health Journey</h2></div>
+      <div style={{ width: "100%", height: 150, marginTop: 10 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data}>
+            <defs><linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/><stop offset="95%" stopColor="#22c55e" stopOpacity={0}/></linearGradient></defs>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.05)" />
+            <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#15803d" }} axisLine={false} tickLine={false} />
+            <YAxis hide domain={[0, 100]} />
+            <Tooltip contentStyle={{ borderRadius: 8, border: "none", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }} />
+            <Area type="monotone" dataKey="score" stroke="#22c55e" strokeWidth={2} fillOpacity={1} fill="url(#colorScore)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+};
+
+const GamificationSection = ({ history }: { history: HistoryItem[] }) => {
+  const count = history.length;
+  return (
+    <div className="card reveal" style={{ marginBottom: 24, background: "linear-gradient(to right, #f0fdf4, #ffffff)", border: "1px solid #bbf7d0", padding: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <h3 style={{ margin: 0, fontSize: 16, display: "flex", gap: 8, color: "#15803d" }}><Trophy size={20} /> Achievements</h3>
+        <span style={{ fontSize: 12, background: "#dcfce7", color: "#15803d", padding: "2px 8px", borderRadius: 99, fontWeight: 700 }}>Level {Math.floor(count / 5) + 1}</span>
+      </div>
+      <div style={{ display: "flex", gap: 12 }}>
+        <div style={{ textAlign: "center", opacity: count >= 1 ? 1 : 0.5 }}>
+          <div style={{ background: count >= 1 ? "#22c55e" : "#cbd5e1", borderRadius: "50%", width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", color: "white", marginBottom: 4, marginInline: "auto" }}><Microscope size={20} /></div>
+          <span style={{ fontSize: 10, color: "#15803d", fontWeight: 600 }}>First Scan</span>
+        </div>
+        <div style={{ textAlign: "center", opacity: count >= 5 ? 1 : 0.5 }}>
+          <div style={{ background: count >= 5 ? "#22c55e" : "#cbd5e1", borderRadius: "50%", width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", color: "white", marginBottom: 4, marginInline: "auto" }}><Activity size={20} /></div>
+          <span style={{ fontSize: 10, color: "#15803d", fontWeight: 600 }}>Explorer</span>
+        </div>
+        <div style={{ textAlign: "center", opacity: count >= 10 ? 1 : 0.5 }}>
+          <div style={{ background: count >= 10 ? "#22c55e" : "#cbd5e1", borderRadius: "50%", width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", color: "white", marginBottom: 4, marginInline: "auto" }}><ShieldCheck size={20} /></div>
+          <span style={{ fontSize: 10, color: "#15803d", fontWeight: 600 }}>Guardian</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ShoppingListCard = ({ items, onRemove, onClear }: { items: string[], onRemove: (i: number) => void, onClear: () => void }) => {
+  if (items.length === 0) return null;
+  return (
+    <div className="card reveal" style={{ marginBottom: 24, background: "white", border: "1px solid #bbf7d0", padding: 20, boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <h3 style={{ margin: 0, color: "#166534", fontSize: 16, display: "flex", gap: 8 }}><ShoppingCart size={20} /> Shopping List</h3>
+        <button onClick={onClear} style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626" }}><Trash2 size={16} /></button>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {items.map((item, i) => (
+          <span key={i} style={{ background: "#f0fdf4", padding: "6px 12px", borderRadius: 8, fontSize: 13, color: "#166534", border: "1px solid #bbf7d0", display: "flex", alignItems: "center", gap: 6 }}>
+            {item} <button onClick={() => onRemove(i)} style={{ border: "none", background: "none", cursor: "pointer", color: "#15803d", display: "flex" }}><X size={14} /></button>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const ExpandableRiskCard = ({ risk }: { risk: any }) => {
+  const [expanded, setExpanded] = useState(false);
+  const severity = getSeverity(risk.description);
+  return (
+    <div className="card" style={{ marginBottom: 12, borderLeft: severity === 'high' ? "4px solid #ef4444" : "4px solid #d97706", padding: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", cursor: "pointer" }} onClick={() => setExpanded(!expanded)}>
+        <div style={{display:'flex', alignItems:'center', gap:8}}><AlertTriangle size={18} color={severity==='high'?"#ef4444":"#d97706"} /> <strong>{risk.title}</strong></div>
+        {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+      </div>
+      <p style={{ marginTop: 8, fontSize: 14, color: "var(--muted)" }}>{risk.description}</p>
+      {expanded && risk.simple_explanation && (<div style={{ marginTop: 10, padding: 10, background: "rgba(0,0,0,0.03)", borderRadius: 6 }}><p style={{ fontSize: 12, margin: 0, fontStyle: "italic", color: "var(--text)" }}><strong>💡 Insight:</strong> {risk.simple_explanation}</p></div>)}
+    </div>
+  );
+};
+
+const AlternativesSection = ({ alternatives, onAdd }: { alternatives: { title: string; description: string }[], onAdd: (item: string) => void }) => {
   if (!alternatives || alternatives.length === 0) return null;
   return (
-    <div className="card reveal" style={{ marginBottom: 36, border: "1px solid #86efac", background: "rgba(34,197,94,0.05)" }}>
-      <div className="section-title"><Sparkles size={22} color="#16a34a" /><h2 style={{ color: "#15803d" }}>Better Alternatives</h2></div>
-      <p style={{ fontSize: 14, color: "#166534", marginBottom: 16 }}>Based on your ingredients, here are some healthier swaps:</p>
-      <div style={{ display: "grid", gap: 12 }}>
+    <div className="card" style={{ marginBottom: 36, border: "1px solid #86efac", background: "#f0fdf4", padding: 16 }}>
+      <div className="section-title" style={{color: "#15803d"}}><Sparkles size={20} /><h2>Better Swaps</h2></div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {alternatives.map((alt, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 12, background: "white", padding: 12, borderRadius: 8, border: "1px solid #bbf7d0" }}>
-            <ArrowRight size={18} color="#16a34a" style={{ marginTop: 2 }} />
-            <div><strong style={{ color: "#15803d" }}>{alt.title}</strong><p style={{ fontSize: 13, color: "#14532d", margin: "4px 0 0" }}>{alt.description}</p></div>
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "white", padding: 12, borderRadius: 8, border: "1px solid #bbf7d0", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
+            <div><strong style={{ color: "#15803d", fontSize: 13 }}>{alt.title}</strong><p style={{ fontSize: 12, color: "#14532d", margin: "2px 0 0" }}>{alt.description}</p></div>
+            <button onClick={() => onAdd(alt.title)} style={{ background: "#dcfce7", border: "none", borderRadius: "50%", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#15803d" }}><Plus size={18} /></button>
           </div>
         ))}
       </div>
@@ -483,13 +406,33 @@ const AlternativesSection = ({ alternatives }: { alternatives: { title: string; 
   );
 };
 
+const IngredientSpotlight = ({ items }: { items: { name: string; type: "good" | "bad" | "neutral"; description: string }[] }) => {
+    if (!items || items.length === 0) return null;
+    return (
+      <div style={{ marginBottom: 30 }}>
+        <div className="section-title"><Microscope size={20} /><h2>Spotlight</h2></div>
+        <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8 }}>
+          {items.map((item, i) => (
+            <div key={i} style={{ 
+              minWidth: 160, padding: 14, borderRadius: 12, 
+              background: "var(--card)", border: "1px solid var(--border)",
+              boxShadow: "0 2px 4px rgba(0,0,0,0.05)", flexShrink: 0 
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                {item.type === "good" ? <ThumbsUp size={14} color="#16a34a" /> : item.type === "bad" ? <ThumbsDown size={14} color="#dc2626" /> : <Info size={14} color="#6b7280" />}
+                <strong style={{ fontSize: 13 }}>{item.name}</strong>
+              </div>
+              <p style={{ fontSize: 11, color: "var(--muted)", margin: 0 }}>{item.description}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+};
+
 const StatusBadge = ({ type, detected }: { type: 'bad' | 'good', detected: boolean }) => {
-  if (type === 'bad') {
-    return detected 
-      ? <span style={{ color: "#dc2626", background: "#fef2f2", padding: "4px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}><AlertOctagon size={12} /> DETECTED</span>
-      : <span style={{ color: "#16a34a", background: "#f0fdf4", padding: "4px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}><CheckCircle2 size={12} /> NONE</span>;
-  }
-  return null; 
+    if (type === 'bad') return detected ? <span style={{ color: "#dc2626", background: "#fef2f2", padding: "4px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}><AlertOctagon size={12} /> DETECTED</span> : <span style={{ color: "#16a34a", background: "#f0fdf4", padding: "4px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}><CheckCircle2 size={12} /> NONE</span>;
+    return null; 
 };
 
 /* ---------------- PAGE ---------------- */
@@ -502,17 +445,15 @@ export default function Page() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">("light");
-  
   const [isScanning, setIsScanning] = useState(false);
   const [scanningStatus, setScanningStatus] = useState("Initializing...");
   const [isListening, setIsListening] = useState(false);
-  
   const [question, setQuestion] = useState("");
   const [chatResponse, setChatResponse] = useState<string | null>(null);
   const [isChatLoading, setIsChatLoading] = useState(false);
-
   const [isCompareMode, setIsCompareMode] = useState(false);
   const [compareItem, setCompareItem] = useState<AnalysisResponse | null>(null);
+  const [shoppingList, setShoppingList] = useState<string[]>([]);
   
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -521,8 +462,10 @@ export default function Page() {
   useEffect(() => {
     const savedTheme = localStorage.getItem("theme") as "light" | "dark" | null;
     const savedHistory = localStorage.getItem("foodbuddy-history");
+    const savedList = localStorage.getItem("foodbuddy-list");
     if (savedTheme) { setTheme(savedTheme); document.documentElement.setAttribute("data-theme", savedTheme); }
     if (savedHistory) { try { setHistory(JSON.parse(savedHistory)); } catch { localStorage.removeItem("foodbuddy-history"); } }
+    if (savedList) { try { setShoppingList(JSON.parse(savedList)); } catch { localStorage.removeItem("foodbuddy-list"); } }
   }, []);
 
   const toggleTheme = () => {
@@ -538,123 +481,75 @@ export default function Page() {
     setHistory(updated);
     localStorage.setItem("foodbuddy-history", JSON.stringify(updated));
   };
-
   const deleteHistoryItem = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const updated = history.filter(item => item.id !== id);
     setHistory(updated);
     localStorage.setItem("foodbuddy-history", JSON.stringify(updated));
   };
-
-  const backToHome = () => {
-    setResult(null);
-    setCompareItem(null);
-    setIngredients("");
-    setIngredientsB("");
-    setIsCompareMode(false);
-    setError(null);
+  const addToShoppingList = (item: string) => {
+    const updated = [...shoppingList, item];
+    setShoppingList(updated);
+    localStorage.setItem("foodbuddy-list", JSON.stringify(updated));
+    alert(`Added ${item} to your list!`);
   };
+  const removeFromShoppingList = (index: number) => {
+    const updated = shoppingList.filter((_, i) => i !== index);
+    setShoppingList(updated);
+    localStorage.setItem("foodbuddy-list", JSON.stringify(updated));
+  };
+  const clearShoppingList = () => {
+    setShoppingList([]);
+    localStorage.removeItem("foodbuddy-list");
+  };
+  const clearInput = () => { if(isCompareMode) { setIngredients(""); setIngredientsB(""); } else { setIngredients(""); } };
+  const backToHome = () => { setResult(null); setCompareItem(null); setIngredients(""); setIngredientsB(""); setIsCompareMode(false); setError(null); };
 
   const fetchAnalysis = async (text: string) => {
-    const res = await fetch("/api/analyze", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ingredients: text }),
-    });
+    const res = await fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ingredients: text }) });
     if (!res.ok) throw new Error("Analysis failed");
     let data: AnalysisResponse = await res.json();
     return mockEnhanceData(data, context, text);
   };
-
   const handleAnalyze = async () => {
     setLoading(true); setError(null); setResult(null); setChatResponse(null); setCompareItem(null);
-    
     if (!isCompareMode) {
-      if (!looksLikeIngredientInput(ingredients)) {
-        setError("FoodBuddy analyzes food ingredients only. Please ensure the scan is clear or enter a valid list.");
-        setLoading(false); return;
-      }
-      try {
-        const data = await fetchAnalysis(ingredients);
-        setResult(data);
-        if (data.intent !== "Invalid input") saveToHistory(ingredients, data, context);
-      } catch (err: any) { setError(err.message); } finally { setLoading(false); }
+      if (!looksLikeIngredientInput(ingredients)) { setError("FoodBuddy analyzes food ingredients only. Please ensure the scan is clear or enter a valid list."); setLoading(false); return; }
+      try { const data = await fetchAnalysis(ingredients); setResult(data); if (data.intent !== "Invalid input") saveToHistory(ingredients, data, context); } catch (err: any) { setError(err.message); } finally { setLoading(false); }
     } else {
-      if (!looksLikeIngredientInput(ingredients) || !looksLikeIngredientInput(ingredientsB)) {
-        setError("Please enter valid food ingredients for BOTH products.");
-        setLoading(false); return;
-      }
-      try {
-        const [dataA, dataB] = await Promise.all([fetchAnalysis(ingredients), fetchAnalysis(ingredientsB)]);
-        setCompareItem(dataA); setResult(dataB);      
-      } catch (err: any) { setError("Failed to compare items. Please try again."); } finally { setLoading(false); }
+      if (!looksLikeIngredientInput(ingredients) || !looksLikeIngredientInput(ingredientsB)) { setError("Please enter valid food ingredients for BOTH products."); setLoading(false); return; }
+      try { const [dataA, dataB] = await Promise.all([fetchAnalysis(ingredients), fetchAnalysis(ingredientsB)]); setCompareItem(dataA); setResult(dataB); } catch (err: any) { setError("Failed to compare items. Please try again."); } finally { setLoading(false); }
     }
   };
-
-  const toggleCompareMode = () => {
-    setIsCompareMode(!isCompareMode);
-    setResult(null); setCompareItem(null); setIngredients(""); setIngredientsB(""); setError(null);
-  };
-
-  const handleTriggerCompare = () => {
-    if (!result) return;
-    setIsCompareMode(true); setIngredientsB(""); setIngredients(ingredients); setResult(null); 
-  };
-
+  const toggleCompareMode = () => { setIsCompareMode(!isCompareMode); setResult(null); setCompareItem(null); setIngredients(""); setIngredientsB(""); setError(null); };
+  const handleTriggerCompare = () => { if (!result) return; setIsCompareMode(true); setIngredientsB(""); setIngredients(ingredients); setResult(null); };
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const file = e.target.files?.[0]; if (!file) return;
     if (!file.type.startsWith("image/")) { setError("Invalid file type."); return; }
-    setError(null); 
-    if (!compareItem) setResult(null);
-    setIsScanning(true); setScanningStatus("Preprocessing...");
+    setError(null); if (!compareItem) setResult(null); setIsScanning(true); setScanningStatus("Preprocessing...");
     try {
       if (file.name.toLowerCase().includes("invalid")) throw new Error("⚠️ Could not detect food ingredients.");
       setScanningStatus("Reading Text...");
       const { data: { text } } = await recognize(file, 'eng', { logger: (m) => { if (m.status === 'recognizing text') setScanningStatus(`Reading... ${Math.round(m.progress * 100)}%`); } });
-      setIsScanning(false);
-      const cleanText = text.replace(/\n/g, ", ").replace(/,\s*,/g, ",").trim();
+      setIsScanning(false); const cleanText = text.replace(/\n/g, ", ").replace(/,\s*,/g, ",").trim();
       if (isCompareMode && ingredients.length > 5) setIngredientsB(cleanText); else setIngredients(cleanText);
     } catch (err: any) { setIsScanning(false); setError(err.message || "Failed to scan image."); }
   };
-
   const toggleListening = () => {
     if (isListening) { setIsListening(false); return; }
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) { alert("Voice input is not supported in this browser."); return; }
-    const recognition = new SpeechRecognition();
-    recognition.lang = "en-US"; recognition.interimResults = false; recognition.maxAlternatives = 1;
-    setIsListening(true);
+    const recognition = new SpeechRecognition(); recognition.lang = "en-US"; recognition.interimResults = false; recognition.maxAlternatives = 1; setIsListening(true);
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
       if (isCompareMode && ingredients.length > 5) setIngredientsB((prev) => (prev ? prev + " " + transcript : transcript)); else setIngredients((prev) => (prev ? prev + " " + transcript : transcript));
       setIsListening(false);
     };
-    recognition.onerror = () => setIsListening(false); recognition.onend = () => setIsListening(false);
-    recognition.start();
+    recognition.onerror = () => setIsListening(false); recognition.onend = () => setIsListening(false); recognition.start();
   };
-
-  const readSummary = () => {
-    if (!result?.summary) return;
-    const utterance = new SpeechSynthesisUtterance(result.summary);
-    window.speechSynthesis.speak(utterance);
-  };
-
-  const cancelComparison = () => {
-    setIsCompareMode(false); setCompareItem(null); setResult(null); setIngredients(""); setIngredientsB("");
-  };
-
-  const handleAskQuestion = () => {
-    if (!question.trim()) return;
-    setIsChatLoading(true); setChatResponse(null);
-    setTimeout(() => {
-      setIsChatLoading(false);
-      const q = question.toLowerCase();
-      if (q.includes("child") || q.includes("kid")) setChatResponse("For children, I'd recommend limiting this due to sugar content.");
-      else if (q.includes("vegan")) setChatResponse("Based on ingredients, this appears to be vegan-friendly.");
-      else setChatResponse("Given the ingredients, moderation is key.");
-    }, 1500);
-  };
-
+  const readSummary = () => { if (!result?.summary) return; const utterance = new SpeechSynthesisUtterance(result.summary); window.speechSynthesis.speak(utterance); };
+  const cancelComparison = () => { setIsCompareMode(false); setCompareItem(null); setResult(null); setIngredients(""); setIngredientsB(""); };
+  const handleAskQuestion = () => { if (!question.trim()) return; setIsChatLoading(true); setChatResponse(null); setTimeout(() => { setIsChatLoading(false); const q = question.toLowerCase(); if (q.includes("child") || q.includes("kid")) setChatResponse("For children, I'd recommend limiting this due to sugar content."); else if (q.includes("vegan")) setChatResponse("Based on ingredients, this appears to be vegan-friendly."); else setChatResponse("Given the ingredients, moderation is key."); }, 1500); };
   const bestFor = result && compareItem ? getBestForTags(compareItem, result) : { winner: "", tags: [] };
 
   useEffect(() => { if (result && resultRef.current) resultRef.current.scrollIntoView({ behavior: "smooth", block: "start" }); }, [result]);
@@ -678,6 +573,7 @@ export default function Page() {
         </section>
       )}
 
+      {/* --- INPUT SECTION --- */}
       {!result && (
       <section className="card reveal" style={{ marginBottom: 36, position: 'relative' }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
@@ -698,7 +594,8 @@ export default function Page() {
           </div>
         ) : (
           <div style={{ position: "relative" }}>
-            <textarea rows={4} placeholder="Type ingredients, scan a label, or use voice..." style={{ width: "100%" }} value={ingredients} onChange={(e) => setIngredients(e.target.value)} disabled={isScanning} />
+            <textarea rows={4} placeholder="Type ingredients, scan a label, or use voice..." style={{ width: "100%", paddingRight: 40 }} value={ingredients} onChange={(e) => setIngredients(e.target.value)} disabled={isScanning} />
+            {ingredients && <button onClick={clearInput} style={{ position: "absolute", right: 10, top: 10, background: "none", border: "none", cursor: "pointer", color: "var(--muted)" }}><X size={16} /></button>}
             {isScanning && <div style={{ position: "absolute", inset: 0, marginTop: 14, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.8)", backdropFilter: "blur(2px)", borderRadius: 12, color: "var(--primary)", fontWeight: 600 }}><Loader2 className="spin" size={32} style={{ marginBottom: 8 }} />{scanningStatus}</div>}
           </div>
         )}
@@ -714,25 +611,64 @@ export default function Page() {
 
       {history.length > 0 && !result && !compareItem && (
         <section className="card reveal" style={{ marginBottom: 36 }}>
-          <div className="section-title"><History size={22} /><h2>Recent Analyses</h2></div>
-          {history.map((item) => (
-            <div key={item.id} className="card" style={{ marginBottom: 12, cursor: "pointer" }} onClick={() => { setIngredients(item.ingredients); setResult(item.result); if (item.context) setContext(item.context); }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-                <strong style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: 0 }}>{item.ingredients}</strong>
-                {item.context && <span style={{ fontSize: 10, background: "var(--muted)", color: "white", padding: "2px 6px", borderRadius: 4, flexShrink: 0 }}>{item.context.toUpperCase()}</span>}
-                <button onClick={(e) => deleteHistoryItem(item.id, e)} style={{ border: "none", background: "none", cursor: "pointer", padding: 4, color: "var(--muted)" }}>
-                  <Trash2 size={16} />
-                </button>
-              </div>
-              <p style={{ fontSize: 12, color: "var(--muted)" }}>{new Date(item.timestamp).toLocaleString()}</p>
+          <HealthTrendChart history={history} />
+          {/* DASHBOARD GRID */}
+          <div style={{ display: "grid", gap: 20, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
+            <GamificationSection history={history} />
+            <ShoppingListCard items={shoppingList} onRemove={removeFromShoppingList} onClear={clearShoppingList} />
+          </div>
+          
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, marginTop: 30 }}>
+            <div className="section-title" style={{ margin: 0 }}>
+              <History size={22} />
+              <h2>Recent Analyses</h2>
             </div>
-          ))}
-          <button className="primary" style={{ marginTop: 12 }} onClick={() => { setHistory([]); localStorage.removeItem("foodbuddy-history"); }}><Trash2 size={16} /> Clear History</button>
+            {/* NEW SUBTLE CLEAR HISTORY BUTTON */}
+            <button
+              onClick={() => {
+                if (window.confirm("Are you sure you want to clear your history?")) {
+                  setHistory([]);
+                  localStorage.removeItem("foodbuddy-history");
+                }
+              }}
+              style={{
+                fontSize: 12,
+                color: "#ef4444",
+                background: "rgba(239, 68, 68, 0.1)",
+                border: "1px solid rgba(239, 68, 68, 0.2)",
+                padding: "6px 12px",
+                borderRadius: 99,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                transition: "all 0.2s"
+              }}
+            >
+              <Trash2 size={14} /> Clear All
+            </button>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {history.map((item) => (
+              <div key={item.id} className="card" style={{ marginBottom: 0, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px", borderLeft: "4px solid var(--primary)" }} onClick={() => { setIngredients(item.ingredients); setResult(item.result); if (item.context) setContext(item.context); }}>
+                <div style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <strong style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block", fontSize: 13 }}>{item.ingredients}</strong>
+                    {item.context && <span style={{ fontSize: 9, background: "var(--muted)", color: "white", padding: "2px 6px", borderRadius: 4, flexShrink: 0 }}>{item.context.toUpperCase()}</span>}
+                  </div>
+                  <p style={{ fontSize: 11, color: "var(--muted)", margin: 0 }}>{new Date(item.timestamp).toLocaleString()}</p>
+                </div>
+                <button onClick={(e) => deleteHistoryItem(item.id, e)} style={{ border: "none", background: "rgba(0,0,0,0.05)", borderRadius: "50%", padding: 8, cursor: "pointer", color: "var(--muted)" }}><Trash2 size={14} /></button>
+              </div>
+            ))}
+          </div>
         </section>
       )}
 
       {error && <p style={{ color: "red" }}>{error}</p>}
 
+      {/* ================= RESULTS / COMPARISON VIEW ================= */}
       {result && (
         <section ref={resultRef} className="fade-in">
           <div style={{ marginBottom: 16 }}>
@@ -749,6 +685,7 @@ export default function Page() {
             </div>
           ) : compareItem ? (
             <div className="card" style={{ padding: "clamp(16px, 3vw, 24px)", border: "2px solid #3b82f6" }}>
+              {/* COMPARE UI (SAME AS BEFORE) */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
                 <h2 style={{ display: "flex", alignItems: "center", gap: 10, fontSize: "clamp(18px, 4vw, 22px)" }}><Split size={24} /> Comparison Result</h2>
                 <button onClick={cancelComparison} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, background: "var(--card)", border: "1px solid var(--border)", padding: "6px 12px", borderRadius: 8, cursor: "pointer" }}><ArrowLeft size={16} /> Exit</button>
@@ -757,40 +694,21 @@ export default function Page() {
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
                   <Trophy size={28} color="#16a34a" style={{ flexShrink: 0 }} />
                   <div>
-                    <h3 style={{ color: "#15803d", margin: 0, fontSize: 16 }}>
-                      {calculateHealthScore(compareItem.risks) >= calculateHealthScore(result.risks) ? "Product A (First Item)" : "Product B (Second Item)"} looks healthier.
-                    </h3>
-                    <p style={{ color: "#166534", margin: "8px 0 0", fontSize: 14, fontStyle: "italic" }}>
-                      "{generateComparisonInsight(compareItem, result)}"
-                    </p>
+                    <h3 style={{ color: "#15803d", margin: 0, fontSize: 16 }}>{calculateHealthScore(compareItem.risks) >= calculateHealthScore(result.risks) ? "Product A (First Item)" : "Product B (Second Item)"} looks healthier.</h3>
+                    <p style={{ color: "#166534", margin: "8px 0 0", fontSize: 14, fontStyle: "italic" }}>"{generateComparisonInsight(compareItem, result)}"</p>
                   </div>
                 </div>
-                {bestFor.tags.length > 0 && (
-                  <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "#16a34a", display: "flex", alignItems: "center" }}>{bestFor.winner} is best for:</span>
-                    {bestFor.tags.map(tag => (<span key={tag} style={{ background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: 10, fontSize: 10, fontWeight: 600 }}>{tag}</span>))}
-                  </div>
-                )}
+                {bestFor.tags.length > 0 && (<div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}><span style={{ fontSize: 11, fontWeight: 700, color: "#16a34a", display: "flex", alignItems: "center" }}>{bestFor.winner} is best for:</span>{bestFor.tags.map(tag => (<span key={tag} style={{ background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: 10, fontSize: 10, fontWeight: 600 }}>{tag}</span>))}</div>)}
               </div>
-
               <div style={{ marginBottom: 24 }}>
                 <h4 style={{ fontSize: 14, color: "var(--muted)", marginBottom: 12 }}>Key Differences</h4>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, fontSize: 12, alignItems: "center" }}>
-                  <div style={{ fontWeight: 600, color: "var(--muted)" }}>Feature</div>
-                  <div style={{ fontWeight: 600, textAlign: "center" }}>Product A</div>
-                  <div style={{ fontWeight: 600, textAlign: "center" }}>Product B</div>
-                  <div>High Sugar</div>
-                  <div style={{ textAlign: "center" }}><StatusBadge type="bad" detected={compareItem.risks.some(r => r.title.toLowerCase().includes("sugar"))} /></div>
-                  <div style={{ textAlign: "center" }}><StatusBadge type="bad" detected={result.risks.some(r => r.title.toLowerCase().includes("sugar"))} /></div>
-                  <div>Additives</div>
-                  <div style={{ textAlign: "center" }}><StatusBadge type="bad" detected={compareItem.risks.some(r => r.description.toLowerCase().includes("additive"))} /></div>
-                  <div style={{ textAlign: "center" }}><StatusBadge type="bad" detected={result.risks.some(r => r.description.toLowerCase().includes("additive"))} /></div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}><List size={12} /> Complexity</div>
-                  <div style={{ textAlign: "center" }}>{compareItem._rawLength ? (compareItem._rawLength > 15 ? "High" : "Low") : "-"}</div>
-                  <div style={{ textAlign: "center" }}>{result._rawLength ? (result._rawLength > 15 ? "High" : "Low") : "-"}</div>
+                  <div style={{ fontWeight: 600, color: "var(--muted)" }}>Feature</div><div style={{ fontWeight: 600, textAlign: "center" }}>Product A</div><div style={{ fontWeight: 600, textAlign: "center" }}>Product B</div>
+                  <div>High Sugar</div><div style={{ textAlign: "center" }}><StatusBadge type="bad" detected={compareItem.risks.some(r => r.title.toLowerCase().includes("sugar"))} /></div><div style={{ textAlign: "center" }}><StatusBadge type="bad" detected={result.risks.some(r => r.title.toLowerCase().includes("sugar"))} /></div>
+                  <div>Additives</div><div style={{ textAlign: "center" }}><StatusBadge type="bad" detected={compareItem.risks.some(r => r.description.toLowerCase().includes("additive"))} /></div><div style={{ textAlign: "center" }}><StatusBadge type="bad" detected={result.risks.some(r => r.description.toLowerCase().includes("additive"))} /></div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}><List size={12} /> Complexity</div><div style={{ textAlign: "center" }}>{compareItem._rawLength ? (compareItem._rawLength > 15 ? "High" : "Low") : "-"}</div><div style={{ textAlign: "center" }}>{result._rawLength ? (result._rawLength > 15 ? "High" : "Low") : "-"}</div>
                 </div>
               </div>
-
               <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
                 <div style={{ flex: "1 1 250px", padding: 16, background: "var(--background)", borderRadius: 12, textAlign: "center" }}><h4 style={{ color: "var(--muted)", marginBottom: 8 }}>Product A</h4><HealthScoreGauge risks={compareItem.risks} small /><p style={{ fontSize: 13, color: "var(--muted)", marginTop: 8 }}>{compareItem.risks.length} Risks Detected</p></div>
                 <div style={{ flex: "1 1 250px", padding: 16, background: "var(--background)", borderRadius: 12, textAlign: "center" }}><h4 style={{ color: "var(--muted)", marginBottom: 8 }}>Product B</h4><HealthScoreGauge risks={result.risks} small /><p style={{ fontSize: 13, color: "var(--muted)", marginTop: 8 }}>{result.risks.length} Risks Detected</p></div>
@@ -798,42 +716,41 @@ export default function Page() {
             </div>
           ) : (
             <>
-              <div className="section-title"><BarChart3 size={22} /><h2>Overview</h2></div>
-              
-              <p style={{ 
-                marginBottom: 24, 
-                fontSize: 16, 
-                fontWeight: 500,
-                color: calculateHealthScore(result.risks) > 50 ? "var(--text)" : "#dc2626" 
-              }}>
-                {result.dietary 
-                  ? getVerdict(calculateHealthScore(result.risks), result.dietary) 
-                  : result.summary.split('.')[0] + "."} 
-              </p>
+              {/* TIER 1: CRITICAL INTEL (Verdict & Dietary) */}
+              <VerdictBanner score={calculateHealthScore(result.risks)} text={result.dietary ? getVerdict(calculateHealthScore(result.risks), result.dietary) : result.summary.split('.')[0] + "."} />
               
               {result.dietary && <DietaryMatrix items={result.dietary} />}
-              {result.breakdown && <IngredientXRay breakdown={result.breakdown} />}
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20, marginBottom: 30 }}>
-                <div className="card" style={{ padding: 20 }}><RiskAnalysisChart risks={result.risks} /></div>
-                <div className="card" style={{ padding: 20, display: "flex", alignItems: "center", justifyContent: "center" }}><HealthScoreGauge risks={result.risks} /></div>
+              {/* TIER 2: DATA DASHBOARD (X-Ray & Charts) */}
+              <div className="card reveal" style={{ padding: 20, marginBottom: 30 }}>
+                {result.breakdown && <IngredientXRay breakdown={result.breakdown} />}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20, marginTop: 20 }}>
+                  <div><h4 style={{fontSize:12, fontWeight:600, color:"var(--muted)", marginBottom:10}}>RISK SEVERITY</h4><RiskAnalysisChart risks={result.risks} /></div>
+                  <div><h4 style={{fontSize:12, fontWeight:600, color:"var(--muted)", marginBottom:10}}>HEALTH SCORE</h4><HealthScoreGauge risks={result.risks} /></div>
+                </div>
               </div>
               
+              {/* TIER 3: DETAILS (Spotlight, Risks, Trade-offs) */}
               {result.spotlight && <IngredientSpotlight items={result.spotlight} />}
 
               <div className="section-title"><AlertTriangle size={22} /><h2>Risks & Insights</h2></div>
               {result.risks.map((r, i) => <ExpandableRiskCard key={i} risk={r} />)}
+              
               <div className="section-title"><Scale size={22} /><h2>Trade-offs</h2></div>
               {result.tradeoffs.map((t, i) => <div key={i} className="card card-tradeoff reveal" style={{ marginBottom: 14 }}><strong>{t.title}</strong><p>{t.description}</p></div>)}
-              {result.alternatives && <AlternativesSection alternatives={result.alternatives} />}
+              
+              {result.alternatives && <AlternativesSection alternatives={result.alternatives} onAdd={addToShoppingList} />}
+              
               <div className="section-title"><BarChart3 size={22} /><h2>Summary</h2></div>
               <p>{result.summary}</p>
+              
               <div style={{ display: "flex", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
                 <button className="primary" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8 }} onClick={() => { const text = `Intent: ${result.intent}\nSummary: ${result.summary}`; navigator.clipboard.writeText(text); alert("Analysis copied to clipboard"); }}><Clipboard size={16} /> Copy</button>
                 <button onClick={readSummary} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, cursor: "pointer", padding: "10px" }}><Volume2 size={16} /> Listen</button>
                 <button onClick={() => { if (navigator.share) { navigator.share({ title: 'FoodBuddy Analysis', text: result.summary }); } else { alert("Sharing not supported."); } }} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, cursor: "pointer", padding: "10px" }}><Share2 size={16} /> Share</button>
                 <button onClick={handleTriggerCompare} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: 'center', gap: 8, background: "var(--card)", border: "2px solid #3b82f6", color: "#2563eb", borderRadius: 8, cursor: "pointer", padding: "10px", animation: "blue-pulse 2s infinite" }}><Split size={16} /> Compare</button>
               </div>
+
               <div className="card reveal" style={{ marginTop: 24, border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)", padding: "16px" }}>
                 <h3 style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 16 }}><Sparkles size={18} fill="var(--primary)" color="var(--primary)" /> Have a specific question?</h3>
                 <div style={{ display: "flex", gap: 10 }}>
